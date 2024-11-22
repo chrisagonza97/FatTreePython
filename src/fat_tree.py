@@ -97,8 +97,86 @@ class FatTree:
             self.tree[self.uuid] = PhysicalMachine(self.uuid, pod, edge_id, self.pm_capacity)
         self.uuid += 1
 
+    def get_pair_cost(self, pm1, pm2):
+        cost+=self.distance(pm1, self.vnfs[0], True)
+        cost+=self.distance(self.vnfs[self.vnf_count-1], pm2, True)
     @staticmethod
     def distance(one, two):
+        one_id, two_id = one.id, two.id
+
+        # If the two nodes are the same
+        if one_id == two_id:
+            return 0
+
+        # Core to Core
+        if isinstance(one, CoreSwitch) and isinstance(two, CoreSwitch):
+            for aggr_id in one.aggr_edges:
+                if aggr_id in two.aggr_edges:
+                    return 2  # Both core switches are connected to the same aggregate switch
+            return 4  # Different aggregate switches
+
+        # Aggregate to Aggregate
+        if isinstance(one, AggregateSwitch) and isinstance(two, AggregateSwitch):
+            if one.pod == two.pod:
+                return 2  # Both aggregate switches are in the same pod
+            for core_id in one.core_edges:
+                if core_id in two.core_edges:
+                    return 2  # Connected to the same core switch
+            return 4  # Different core switches
+
+        # Edge to Edge
+        if isinstance(one, EdgeSwitch) and isinstance(two, EdgeSwitch):
+            if one.pod == two.pod:
+                return 2  # Both edge switches are in the same pod
+            return 4  # Different pods
+
+        # Physical Machine to Physical Machine
+        if isinstance(one, PhysicalMachine) and isinstance(two, PhysicalMachine):
+            if one.edge_id == two.edge_id:
+                return 2  # Both physical machines are under the same edge switch
+            if one.pod == two.pod:
+                return 4  # Both physical machines are in the same pod
+            return 6  # Different pods
+
+        # Core to Aggregate or Aggregate to Core
+        if (isinstance(one, CoreSwitch) and isinstance(two, AggregateSwitch)) or (isinstance(one, AggregateSwitch) and isinstance(two, CoreSwitch)):
+            if isinstance(one, CoreSwitch):
+                return 1 if two.id in one.aggr_edges else 3
+            return 1 if one.id in two.core_edges else 3
+
+        # Core to Edge or Edge to Core
+        if (isinstance(one, CoreSwitch) and isinstance(two, EdgeSwitch)) or (isinstance(one, EdgeSwitch) and isinstance(two, CoreSwitch)):
+            return 2  # Distance between any core switch and any edge switch is always 2
+
+        # Core to Physical Machine or Physical Machine to Core
+        if (isinstance(one, CoreSwitch) and isinstance(two, PhysicalMachine)) or (isinstance(one, PhysicalMachine) and isinstance(two, CoreSwitch)):
+            return 3  # Distance between any core switch and any physical machine is always 3
+
+        # Aggregate to Edge or Edge to Aggregate
+        if (isinstance(one, AggregateSwitch) and isinstance(two, EdgeSwitch)) or (isinstance(one, EdgeSwitch) and isinstance(two, AggregateSwitch)):
+            if isinstance(one, AggregateSwitch):
+                return 1 if one.pod == two.pod else 3
+            return 1 if two.pod == one.pod else 3
+
+        # Aggregate to Physical Machine or Physical Machine to Aggregate
+        if (isinstance(one, AggregateSwitch) and isinstance(two, PhysicalMachine)) or (isinstance(one, PhysicalMachine) and isinstance(two, AggregateSwitch)):
+            if isinstance(one, AggregateSwitch):
+                return 2 if one.pod == two.pod else 4
+            return 2 if two.pod == one.pod else 4
+
+        # Edge to Physical Machine or Physical Machine to Edge
+        if (isinstance(one, EdgeSwitch) and isinstance(two, PhysicalMachine)) or (isinstance(one, PhysicalMachine) and isinstance(two, EdgeSwitch)):
+            if isinstance(one, EdgeSwitch):
+                return 1 if one.id == two.edge_id else (3 if one.pod == two.pod else 5)
+            return 1 if two.id == one.edge_id else (3 if two.pod == one.pod else 5)
+
+        # Default case (should never reach this)
+        return -1
+    
+    @staticmethod
+    def distance(one, two, flag):
+        one = tree[one]
+        two = tree[two]
         one_id, two_id = one.id, two.id
 
         # If the two nodes are the same
@@ -244,6 +322,19 @@ class FatTree:
         self.vm_pairs[curr_pair].second_vm_location = pm2
         self.tree[pm1].add_vm()
         self.tree[pm2].add_vm()
-        
+
+    def get_reward(self, action):
+        # Reward is the negative of the difference in communication cost 
+        # between the vm pairs old location and new location
+        # (old location comm. cost - new location comm. cost)
+        # plus the migration cost
+        curr_pair, pm1, pm2 = action
+        old_comm_cost = self.vm_pairs[curr_pair].get_communication_cost(self)
+        new_comm_cost = self.get_pair_cost(pm1, pm2)
+        migration_cost = self.get_pair_cost(self.vm_pairs[curr_pair].first_vm_location, pm1)
+        migration_cost += self.get_pair_cost(self.vm_pairs[curr_pair].second_vm_location, pm2)
+
+        return -(old_comm_cost - (new_comm_cost + migration_cost))
+
     
 
