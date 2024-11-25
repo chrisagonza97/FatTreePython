@@ -98,6 +98,7 @@ class FatTree:
         self.uuid += 1
 
     def get_pair_cost(self, pm1, pm2):
+        cost=0
         cost+=self.distance(pm1, self.vnfs[0], True)
         cost+=self.distance(self.vnfs[self.vnf_count-1], pm2, True)
     @staticmethod
@@ -297,6 +298,36 @@ class FatTree:
         flat_locations.append(curr_pair)  # Append current VM pair
         return torch.tensor(flat_locations, dtype=torch.float32)
     
+    def get_action_basis(self,curr_pair, pm1, pm2, num_pms):
+        # Create a sparse basis vector for action (curr_pair, pm1, pm2)
+        basis_vector = torch.zeros(num_pms * num_pms)
+        index1 = curr_pair * num_pms + pm1  # Position for VM1
+        index2 = curr_pair * num_pms + pm2  # Position for VM2
+        basis_vector[index1] = 1  # Assign VM1 to pm1
+        basis_vector[index2] = 1  # Assign VM2 to pm2
+        return basis_vector
+
+    
+    def get_projected_state(self,tree, curr_pair, action_basis_vectors):
+        # Get the current state
+        state = tree.get_state(curr_pair)
+    
+         # Project the state into the subspace
+        projected_state = torch.matmul(action_basis_vectors.T, state)
+        return projected_state
+
+    def get_valid_action_basis(self,tree, curr_pair, num_pms):
+        valid_actions = tree.get_valid_actions(curr_pair)
+        action_basis_vectors = []
+
+        for action in valid_actions:
+            _, pm1, pm2 = action
+            basis_vector = self.get_action_basis(curr_pair, pm1, pm2, num_pms)
+            action_basis_vectors.append(basis_vector)
+    
+        return torch.stack(action_basis_vectors)
+
+    
     def get_valid_actions(self, curr_pair):
         actions = []
         #sorted_pairs = self.vm_pairs
@@ -330,9 +361,10 @@ class FatTree:
         # plus the migration cost
         curr_pair, pm1, pm2 = action
         old_comm_cost = self.vm_pairs[curr_pair].get_communication_cost(self)
-        new_comm_cost = self.get_pair_cost(pm1, pm2)
+        new_comm_cost = self.get_pair_cost(pm1, pm2) * self.vm_pairs[curr_pair].traffic_rate
         migration_cost = self.get_pair_cost(self.vm_pairs[curr_pair].first_vm_location, pm1)
         migration_cost += self.get_pair_cost(self.vm_pairs[curr_pair].second_vm_location, pm2)
+        migration_cost *= self.migration_coefficient
 
         return -(old_comm_cost - (new_comm_cost + migration_cost))
 

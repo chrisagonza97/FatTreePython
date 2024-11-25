@@ -15,7 +15,7 @@ class VmPair:
         first_vnf = fat_tree.vnfs[0]
         last_vnf = fat_tree.vnfs[fat_tree.vnf_count - 1]
         #ingress
-        cost = FatTree.distance(self.first_vm_location, first_vnf, True)
+        cost = FatTree.distance(self.first_vm_location, first_vnf, True)*self.traffic_rate
         #egress 
-        cost+= FatTree.distance(last_vnf, self.second_vm_location, True)
+        cost+= FatTree.distance(last_vnf, self.second_vm_location, True) * self.traffic_rate
     
