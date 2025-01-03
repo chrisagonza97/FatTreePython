@@ -101,6 +101,7 @@ class FatTree:
         self.uuid += 1
 
     def get_pair_cost(self, pm1, pm2):
+        cost=0
         cost+=self.distance(pm1, self.vnfs[0], True)
         cost+=self.distance(self.vnfs[self.vnf_count-1], pm2, True)
         return cost
@@ -358,6 +359,7 @@ class FatTree:
         new_comm_cost = self.get_pair_cost(pm1, pm2)
         migration_cost = self.get_pair_cost(self.vm_pairs[curr_pair].first_vm_location, pm1)
         migration_cost += self.get_pair_cost(self.vm_pairs[curr_pair].second_vm_location, pm2)
+        migration_cost *= self.migration_coefficient
 
         return -(old_comm_cost - (new_comm_cost + migration_cost))
     
