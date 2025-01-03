@@ -1,4 +1,4 @@
-from src.fat_tree import FatTree
+
 class VmPair:
     uuid = 0  # Static class variable to track unique ids
 
@@ -11,11 +11,5 @@ class VmPair:
         self.second_vm_location = second_vm_location
         self.traffic_rate = traffic_rate
     
-    def get_communication_cost(self, fat_tree):
-        first_vnf = fat_tree.vnfs[0]
-        last_vnf = fat_tree.vnfs[fat_tree.vnf_count - 1]
-        #ingress
-        cost = FatTree.distance(self.first_vm_location, first_vnf, True)
-        #egress 
-        cost+= FatTree.distance(last_vnf, self.second_vm_location, True)
+    
     

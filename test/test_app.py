@@ -70,19 +70,19 @@ class TestApp(unittest.TestCase):
         self.assertTrue(isinstance(test_tree.tree[20], PhysicalMachine))
         
         # Check distances
-        self.assertEqual(FatTree.distance(test_tree.tree[0], test_tree.tree[20]), 3)
-        self.assertEqual(FatTree.distance(test_tree.tree[0], test_tree.tree[1]), 2)
-        self.assertEqual(FatTree.distance(test_tree.tree[0], test_tree.tree[2]), 4)
+        self.assertEqual(test_tree.distance(test_tree.tree[0], test_tree.tree[20],False), 3)
+        self.assertEqual(test_tree.distance(test_tree.tree[0], test_tree.tree[1],False), 2)
+        self.assertEqual(test_tree.distance(test_tree.tree[0], test_tree.tree[2],False), 4)
         
-        self.assertEqual(FatTree.distance(test_tree.tree[20], test_tree.tree[21]), 2)
-        self.assertEqual(FatTree.distance(test_tree.tree[20], test_tree.tree[22]), 4)
-        self.assertEqual(FatTree.distance(test_tree.tree[20], test_tree.tree[24]), 6)
-        self.assertEqual(FatTree.distance(test_tree.tree[20], test_tree.tree[6]), 4)
+        self.assertEqual(test_tree.distance(test_tree.tree[20], test_tree.tree[21],False), 2)
+        self.assertEqual(test_tree.distance(test_tree.tree[20], test_tree.tree[22],False), 4)
+        self.assertEqual(test_tree.distance(test_tree.tree[20], test_tree.tree[24],False), 6)
+        self.assertEqual(test_tree.distance(test_tree.tree[20], test_tree.tree[6],False), 4)
         
         # Check distances for switches
-        self.assertEqual(FatTree.distance(test_tree.tree[6], test_tree.tree[7]), 2)
-        self.assertEqual(FatTree.distance(test_tree.tree[6], test_tree.tree[8]), 2)
-        self.assertEqual(FatTree.distance(test_tree.tree[6], test_tree.tree[9]), 4)
+        self.assertEqual(test_tree.distance(test_tree.tree[6], test_tree.tree[7],False), 2)
+        self.assertEqual(test_tree.distance(test_tree.tree[6], test_tree.tree[8],False), 2)
+        self.assertEqual(test_tree.distance(test_tree.tree[6], test_tree.tree[9],False), 4)
 
 if __name__ == '__main__':
     unittest.main()

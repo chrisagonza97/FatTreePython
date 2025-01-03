@@ -12,8 +12,8 @@ class App:
         tree.set_traffic_range(100, 4000)
         tree.create_vm_pairs()
         tree.cs2_migration()
-        state = tree.get_state()
-        print(state)
+        #state = tree.get_state()
+        #print(state)
 
 if __name__ == "__main__":
     App.main()
