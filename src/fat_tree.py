@@ -288,22 +288,101 @@ class FatTree:
         self.vmp_mcf_file()
         self.read_mcf_pairs_output()
 
+    def init_ac(self):
+        self.d = self.vm_pair_count * 2 * self.pm_count
+        self.policy = {vm: {pm: 1 / self.pm_count for pm in range(self.first_pm, self.last_pm + 1)} for vm in self.vm_pairs}
+        self.T = np.eye(self.d)
+        self.q_table = {}
+        self.B = np.eye(self.d)
+        #self.phi = np.zeros(self.d)
+        self.theta = np.zeros(self.d)
+        self.z = np.zeros(self.d)
+        self.C = 0
+        self.time=1
+        #set all pm capacities to empty
+        for i in range(self.first_pm, self.last_pm+1):
+            self.tree[i].capacity_left = self.pm_capacity
+
+    def select_action(self, curr_vm):
+        pm_choices = list(self.policy[curr_vm].keys())
+        pm_probs = list(self.policy[curr_vm].values())
+
+        # Check PM capacities and set probabilities to 0 for PMs at capacity
+        for i, pm in enumerate(pm_choices):
+            if self.tree[pm].capacity_left <= 0:  
+                pm_probs[i] = 0
+
+        # Normalize the probabilities to sum to 1
+        total_prob = sum(pm_probs)
+        if total_prob > 0:
+            pm_probs = [p / total_prob for p in pm_probs]
+        else:
+            raise ValueError("No valid PMs available for VM migration.")
+
+        # Select an action based on the adjusted probabilities
+        selected_action = np.random.choice(pm_choices, p=pm_probs)
+        #decrement selected PM's capacity 
+        self.tree[selected_action].capacity_left -= 1
+        return selected_action
+
+        
+    def simulate_action(self,actions):
+        total_cost = 0
+
+        for i in range(self.actions):
+            
+            #migration cost
+            if(i%2==0):
+                total_cost+= self.distance(actions[i], self.vnfs[0], True)
+                total_cost*= self.vm_pairs[i//2].traffic_rate
+                total_cost+= self.distance(self.vm_pairs[i//2].first_vm_location, actions[i], True) * self.migration_coefficient
+            else:
+                total_cost+= self.distance(actions[i], self.vnfs[self.vnf_count-1], True)
+                total_cost*= self.vm_pairs[i//2].traffic_rate
+                total_cost+= self.distance(self.vm_pairs[i//2].second_vm_location, actions[i], True) * self.migration_coefficient
+            
+        return total_cost
+    
+    def get_phi(self, actions):
+        phi = np.zeros(self.vm_pair_count * 2,  self.pm_count)
+        for i, action in enumerate(actions):
+            vm_pair_index = i // 2
+            phi[]
+
+            
 
     def ac_migration(self):
         #use Megh state projection
+        self.init_ac()
         #there are d basis vectors
-        d = self.vm_pair_count * 2 * self.pm_count
+        #d = self.vm_pair_count * 2 * self.pm_count
         #initialize policy to equally do all migrations
-        self.policy = {vm: {pm: 1 / self.pm_count for pm in range(self.first_pm, self.last_pm + 1)} for vm in self.vm_pairs}
+        #self.policy = {vm: {pm: 1 / self.pm_count for pm in range(self.first_pm, self.last_pm + 1)} for vm in self.vm_pairs}
         current_state = self.get_state()
+        actions={}
+        for i in range(self.vm_pair_count*2):
+            if i % 2 == 0:
+                actions[self.vm_pairs_sorted_index[i]*2]=(self.select_action(current_state[self.vm_pairs_sorted_index[i]*2])) 
+            else:
+                actions[self.vm_pairs_sorted_index[i]*2+1]=(self.select_action(current_state[self.vm_pairs_sorted_index[i]*2+1])) #TODO FIX
+            
 
-        self.basis_vectors = np.zeros((d,len(current_state)))
+        cost = self.simulate_action(actions)
 
-        for i in range(d):
+        phi = self.get_phi(actions)
+        self.C+=cost
+
+        self.B+=np.outer(self.phi, self.phi)
+        
+
+        actions = self.select_action(current_state)
+        self.basis_vectors = np.zeros((self.d,len(current_state)))
+
+        for i in range(self.d):
             self.basis_vectors[i] = np.random.rand(len(current_state))
         
         #initialize Q table
-        self.q_table = {}
+        
 
         for vm_pair in self.vm_pairs:
             vm_actions = {}
@@ -315,11 +394,16 @@ class FatTree:
     def get_state(self):
         #State 
         # State includes VM pair locations
-        sorted = self.get_sorted_pairs()
+        self.sorted = self.get_sorted_pairs()
+        self.vm_pairs_sorted_index=[] #index i of this list is the vm pair num of the ith element in sorted
         state = []
         for i in range(self.vm_pair_count):
-            state.append(sorted[i].first_vm_location)
-            state.append(sorted[i].second_vm_location)
+            #state.append(sorted[i].first_vm_location)
+            #state.append(sorted[i].second_vm_location)
+            state.append(self.vm_pairs[i].first_vm_location)
+            state.append(self.vm_pairs[i].second_vm_location)
+
+            self.vm_pairs_sorted_index.append(self.vm_pairs.index(self.sorted[i]))
         return state
     
     def get_valid_actions(self, curr_pair):
@@ -372,6 +456,7 @@ class FatTree:
         cost+= FatTree.distance(last_vnf, vm_pair.second_vm_location, True)
         cost *= vm_pair.traffic_rate
         return cost
+
     def calc_total_cost(self):
         total_cost = 0
         for i in range(self.vm_pair_count):
