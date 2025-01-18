@@ -19,7 +19,13 @@ class FatTree:
         self.vnf_count = vnf_count
         self.pm_capacity = pm_capacity
         self.migration_coefficient= 10
-        
+
+        self.discount_factor = 0.5
+        self.episodes = 100
+        self.temperature = 3
+        self.epsilon = 0.01
+        self.q_table = {}
+
         self.first_pm = (k * k) // 4 + (k * k // 2) + (k * k // 2)
         self.last_pm = self.first_pm + (k * k * k) // 4 - 1
         self.pm_count = self.last_pm - self.first_pm + 1
@@ -340,14 +346,36 @@ class FatTree:
                 total_cost+= self.distance(actions[i], self.vnfs[self.vnf_count-1], True)
                 total_cost*= self.vm_pairs[i//2].traffic_rate
                 total_cost+= self.distance(self.vm_pairs[i//2].second_vm_location, actions[i], True) * self.migration_coefficient
+
+        #save original location, set new location, get next action, get its phi, reset location to original, finally also return the nect phi
+        original_locations = []
+        next_actions = {}
+        current_state = self.get_state()
+        for i in range(self.vm_pair_count):
+            original_locations.append(self.vm_pairs[i].first_vm_location)
+            original_locations.append(self.vm_pairs[i].second_vm_location)
             
-        return total_cost
+            self.vm_pairs[i].first_vm_location = actions[i*2]
+            self.vm_pairs[i].second_vm_location = actions[i*2+1]
+
+            
+
+            next_actions[self.vm_pairs_sorted_index[i]*2]= self.select_action(current_state[self.vm_pairs_sorted_index[i]*2])   
+            next_actions[self.vm_pairs_sorted_index[i]*2+1]= self.select_action(current_state[self.vm_pairs_sorted_index[i]*2+1]) 
+        phi = self.get_phi(next_actions)
+        for i in range(self.vm_pair_count):
+            self.vm_pairs[i].first_vm_location = original_locations[i*2]
+            self.vm_pairs[i].second_vm_location = original_locations[i*2+1]
+
+
+        return total_cost, phi
     
     def get_phi(self, actions):
-        phi = np.zeros(self.vm_pair_count * 2,  self.pm_count)
+        phi = np.zeros((self.vm_pair_count * 2, self.pm_count))
         for i, action in enumerate(actions):
-            vm_pair_index = i // 2
-            phi[]
+            #vm_pair_index = i // 2
+            phi[i,action] = 1
+        return phi.flatten()
 
             
 
@@ -358,38 +386,47 @@ class FatTree:
         #d = self.vm_pair_count * 2 * self.pm_count
         #initialize policy to equally do all migrations
         #self.policy = {vm: {pm: 1 / self.pm_count for pm in range(self.first_pm, self.last_pm + 1)} for vm in self.vm_pairs}
-        current_state = self.get_state()
-        actions={}
-        for i in range(self.vm_pair_count*2):
-            if i % 2 == 0:
-                actions[self.vm_pairs_sorted_index[i]*2]=(self.select_action(current_state[self.vm_pairs_sorted_index[i]*2])) 
-            else:
-                actions[self.vm_pairs_sorted_index[i]*2+1]=(self.select_action(current_state[self.vm_pairs_sorted_index[i]*2+1])) #TODO FIX
+        
+        
+        for i in range(self.episodes):
+            current_state = self.get_state()
+            actions={}
+            for i in range(self.vm_pair_count*2):
+                if i % 2 == 0:
+                    actions[self.vm_pairs_sorted_index[i]*2]= self.select_action(current_state[self.vm_pairs_sorted_index[i]*2]) 
+                else:
+                    actions[self.vm_pairs_sorted_index[i]*2+1]= self.select_action(current_state[self.vm_pairs_sorted_index[i]*2+1]) 
+                
+
+            cost, next_phi = self.simulate_action(actions)
+            phi = self.get_phi(actions)
+
+            self.C+=cost
+            self.z += cost * phi * cost
+            self.B+=np.outer(self.phi, (self.phi - self.discount_factor * next_phi))
+
+            self.theta = self.B + self.z
+            self.policy = self.policy_calculator(actions, self.theta)
+            #actions = self.select_action(current_state)
+            #self.basis_vectors = np.zeros((self.d,len(current_state)))
+
+            #for i in range(self.d):
+                #self.basis_vectors[i] = np.random.rand(len(current_state))
+            
+            #initialize Q table
             
 
-        cost = self.simulate_action(actions)
+            #for vm_pair in self.vm_pairs:
+            #    vm_actions = {}
+             #   for pm in range(self.first_pm, self.last_pm + 1):
+              #      vm_actions[pm] = 0  # Start with zero reward for all actions
+               # self.q_table[vm_pair] = vm_actions
+        #pass
 
-        phi = self.get_phi(actions)
-        self.C+=cost
-
-        self.B+=np.outer(self.phi, self.phi)
-        
-
-        actions = self.select_action(current_state)
-        self.basis_vectors = np.zeros((self.d,len(current_state)))
-
+    def policy_calculator(self, actions, theta):
+        self.temperature *= np.exp(-self.epsilon)
         for i in range(self.d):
-            self.basis_vectors[i] = np.random.rand(len(current_state))
-        
-        #initialize Q table
-        
-
-        for vm_pair in self.vm_pairs:
-            vm_actions = {}
-            for pm in range(self.first_pm, self.last_pm + 1):
-                vm_actions[pm] = 0  # Start with zero reward for all actions
-            self.q_table[vm_pair] = vm_actions
-        pass
+        #TODO POLICY CALCULATION
 
     def get_state(self):
         #State 
