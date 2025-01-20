@@ -2,6 +2,7 @@ import torch
 import numpy as np
 import random
 import os
+import matplotlib.pyplot as plt
 
 from .core_switch import CoreSwitch
 from .agg_switch import AggregateSwitch
@@ -25,6 +26,7 @@ class FatTree:
         self.temperature = 3
         self.epsilon = 0.01
         self.q_table = {}
+        self.episode_costs = []
 
         self.first_pm = (k * k) // 4 + (k * k // 2) + (k * k // 2)
         self.last_pm = self.first_pm + (k * k * k) // 4 - 1
@@ -387,7 +389,7 @@ class FatTree:
         #initialize policy to equally do all migrations
         #self.policy = {vm: {pm: 1 / self.pm_count for pm in range(self.first_pm, self.last_pm + 1)} for vm in self.vm_pairs}
         
-        
+        self.episode_costs.append(self.calc_total_cost())
         for i in range(self.episodes):
             current_state = self.get_state()
             actions={}
@@ -406,7 +408,24 @@ class FatTree:
             self.B+=np.outer(self.phi, (self.phi - self.discount_factor * next_phi))
 
             self.theta = self.B + self.z
-            self.policy = self.policy_calculator(actions, self.theta)
+            self.policy = self.policy_calculator(phi, self.theta)
+            #finally,update the vm locations, but calculate migration cost before doing so
+            episode_cost = 0
+            #calculate the cost migration
+            for i in range(self.vm_pair_count):
+                episode_cost+= self.distance(self.vm_pairs[i].first_vm_location, actions[i*2], True) * self.migration_coefficient
+                episode_cost+= self.distance(self.vm_pairs[i].second_vm_location, actions[i*2+1], True) * self.migration_coefficient
+
+            #update the vm locations
+            for i in range(self.vm_pair_count):
+                self.vm_pairs[i].first_vm_location = actions[i*2]
+                self.vm_pairs[i].second_vm_location = actions[i*2+1]
+            
+            episode_cost+= self.calc_total_cost()
+            self.episode_costs.append(episode_cost)
+            #plot the episodes costs over time
+            self.plot_episodes_cost()
+
             #actions = self.select_action(current_state)
             #self.basis_vectors = np.zeros((self.d,len(current_state)))
 
@@ -423,10 +442,30 @@ class FatTree:
                # self.q_table[vm_pair] = vm_actions
         #pass
 
-    def policy_calculator(self, actions, theta):
+    def plot_episodes_cost(self):
+        #save the plot to the project root directory
+        plt.plot(self.episode_costs)
+        plt.xlabel('Episodes')
+        plt.ylabel('Cost')
+        plt.title('Cost over time')
+        plt.savefig('cost_over_time.png')
+        
+
+    def policy_calculator(self, phi, theta):
         self.temperature *= np.exp(-self.epsilon)
-        for i in range(self.d):
-        #TODO POLICY CALCULATION
+        Q_values = []
+        for action_idx in range(self.d):  # Iterate over all actions
+            Q_value = np.dot(phi[action_idx], theta)
+            Q_values.append(Q_value)
+
+        min_q = min(Q_values)
+        exp_values = np.exp([-(q - min_q) / self.temperature for q in Q_values])
+        sum_exp_values = sum(exp_values)
+
+        self.policy = [exp_val / sum_exp_values for exp_val in exp_values]  # Normalize
+
+        # Return updated policy as a dictionary or an array
+        #return policy
 
     def get_state(self):
         #State 
@@ -440,7 +479,8 @@ class FatTree:
             state.append(self.vm_pairs[i].first_vm_location)
             state.append(self.vm_pairs[i].second_vm_location)
 
-            self.vm_pairs_sorted_index.append(self.vm_pairs.index(self.sorted[i]))
+            self.vm_pairs_sorted_index.append(np.where(self.vm_pairs == self.sorted[i])[0][0])
+
         return state
     
     def get_valid_actions(self, curr_pair):
@@ -488,9 +528,9 @@ class FatTree:
         first_vnf = self.vnfs[0]
         last_vnf = self.vnfs[self.vnf_count - 1]
         #ingress
-        cost = FatTree.distance(vm_pair.first_vm_location, first_vnf, True)
+        cost = self.distance(vm_pair.first_vm_location, first_vnf, True)
         #egress 
-        cost+= FatTree.distance(last_vnf, vm_pair.second_vm_location, True)
+        cost+= self.distance(last_vnf, vm_pair.second_vm_location, True)
         cost *= vm_pair.traffic_rate
         return cost
 

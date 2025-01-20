@@ -11,7 +11,8 @@ class App:
         tree = FatTree(4, 10, 3, 3, 10)
         tree.set_traffic_range(100, 4000)
         tree.create_vm_pairs()
-        tree.cs2_migration()
+        #tree.cs2_migration()
+        tree.ac_migration()
         #state = tree.get_state()
         #print(state)
 
