@@ -298,7 +298,9 @@ class FatTree:
 
     def init_ac(self):
         self.d = self.vm_pair_count * 2 * self.pm_count
-        self.policy = {vm: {pm: 1 / self.pm_count for pm in range(self.first_pm, self.last_pm + 1)} for vm in self.vm_pairs}
+        #self.policy = {vm: {pm: 1 / self.pm_count for pm in range(self.first_pm, self.last_pm + 1)} for vm in self.vm_pairs}
+        self.policy = {i: {pm: 1 / self.pm_count for pm in range(self.first_pm, self.last_pm + 1)} for i in range(len(self.vm_pairs))}
+
         self.T = np.eye(self.d)
         self.q_table = {}
         self.B = np.eye(self.d)
@@ -395,9 +397,9 @@ class FatTree:
             actions={}
             for i in range(self.vm_pair_count*2):
                 if i % 2 == 0:
-                    actions[self.vm_pairs_sorted_index[i]*2]= self.select_action(current_state[self.vm_pairs_sorted_index[i]*2]) 
+                    actions[self.vm_pairs_sorted_index[i]*2]= self.select_action(current_state[i*2]) 
                 else:
-                    actions[self.vm_pairs_sorted_index[i]*2+1]= self.select_action(current_state[self.vm_pairs_sorted_index[i]*2+1]) 
+                    actions[self.vm_pairs_sorted_index[i]*2+1]= self.select_action(current_state[i*2+1]) 
                 
 
             cost, next_phi = self.simulate_action(actions)
@@ -470,8 +472,8 @@ class FatTree:
     def get_state(self):
         #State 
         # State includes VM pair locations
-        self.sorted = self.get_sorted_pairs()
-        self.vm_pairs_sorted_index=[] #index i of this list is the vm pair num of the ith element in sorted
+        #self.sorted = self.get_sorted_pairs()
+        #self.vm_pairs_sorted_index=[] #index i of this list is the vm pair num of the ith element in sorted
         state = []
         for i in range(self.vm_pair_count):
             #state.append(sorted[i].first_vm_location)
@@ -479,7 +481,7 @@ class FatTree:
             state.append(self.vm_pairs[i].first_vm_location)
             state.append(self.vm_pairs[i].second_vm_location)
 
-            self.vm_pairs_sorted_index.append(np.where(self.vm_pairs == self.sorted[i])[0][0])
+            #self.vm_pairs_sorted_index.append(np.where(self.vm_pairs == self.sorted[i])[0][0])
 
         return state
     
