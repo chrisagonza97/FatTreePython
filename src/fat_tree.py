@@ -397,9 +397,9 @@ class FatTree:
             actions={}
             for i in range(self.vm_pair_count*2):
                 if i % 2 == 0:
-                    actions[self.vm_pairs_sorted_index[i]*2]= self.select_action(current_state[i*2]) 
+                    actions[i*2]= self.select_action(current_state[i*2]) 
                 else:
-                    actions[self.vm_pairs_sorted_index[i]*2+1]= self.select_action(current_state[i*2+1]) 
+                    actions[i*2+1]= self.select_action(current_state[i*2+1]) 
                 
 
             cost, next_phi = self.simulate_action(actions)
