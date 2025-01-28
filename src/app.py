@@ -8,7 +8,7 @@ class App:
     @staticmethod
     def main():
         # Creating an instance of FatTree
-        tree = FatTree(4, 10, 3, 3, 10)
+        tree = FatTree(4, 10, 3, 3, 50)
         tree.set_traffic_range(100, 4000)
         tree.create_vm_pairs()
         #tree.cs2_migration()

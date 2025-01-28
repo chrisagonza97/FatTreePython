@@ -299,7 +299,9 @@ class FatTree:
     def init_ac(self):
         self.d = self.vm_pair_count * 2 * self.pm_count
         #self.policy = {vm: {pm: 1 / self.pm_count for pm in range(self.first_pm, self.last_pm + 1)} for vm in self.vm_pairs}
-        self.policy = {i: {pm: 1 / self.pm_count for pm in range(self.first_pm, self.last_pm + 1)} for i in range(len(self.vm_pairs))}
+        self.policy = {i: {pm: 1 / self.pm_count for pm in range(self.first_pm, self.last_pm + 1)} for i in range(self.vm_pair_count * 2)}
+        #print(f"Policy keys: {list(self.policy.keys())}")
+
 
         self.T = np.eye(self.d)
         self.q_table = {}
@@ -315,6 +317,8 @@ class FatTree:
 
     def select_action(self, curr_vm):
         pm_choices = list(self.policy[curr_vm].keys())
+        #print pm_choices
+        #print(f"PM choices for VM {curr_vm}: {pm_choices}")
         pm_probs = list(self.policy[curr_vm].values())
 
         # Check PM capacities and set probabilities to 0 for PMs at capacity
@@ -333,13 +337,15 @@ class FatTree:
         selected_action = np.random.choice(pm_choices, p=pm_probs)
         #decrement selected PM's capacity 
         self.tree[selected_action].capacity_left -= 1
+        #print selected_action
+        #print(f"Selected PM for VM {curr_vm}: {selected_action}")
         return selected_action
 
         
     def simulate_action(self,actions):
         total_cost = 0
 
-        for i in range(self.actions):
+        for i in actions.keys():
             
             #migration cost
             if(i%2==0):
@@ -364,8 +370,11 @@ class FatTree:
 
             
 
-            next_actions[self.vm_pairs_sorted_index[i]*2]= self.select_action(current_state[self.vm_pairs_sorted_index[i]*2])   
-            next_actions[self.vm_pairs_sorted_index[i]*2+1]= self.select_action(current_state[self.vm_pairs_sorted_index[i]*2+1]) 
+            #next_actions[self.vm_pairs_sorted_index[i]*2]= self.select_action(current_state[self.vm_pairs_sorted_index[i]*2])   
+            #next_actions[self.vm_pairs_sorted_index[i]*2+1]= self.select_action(current_state[self.vm_pairs_sorted_index[i]*2+1]) 
+            next_actions[i * 2] = self.select_action(i * 2)  # Ingress VM
+            next_actions[i * 2 + 1] = self.select_action(i * 2 + 1)  # Egress VM 
+
         phi = self.get_phi(next_actions)
         for i in range(self.vm_pair_count):
             self.vm_pairs[i].first_vm_location = original_locations[i*2]
@@ -376,9 +385,13 @@ class FatTree:
     
     def get_phi(self, actions):
         phi = np.zeros((self.vm_pair_count * 2, self.pm_count))
+        #print(actions)
         for i, action in enumerate(actions):
             #vm_pair_index = i // 2
-            phi[i,action] = 1
+            #print action
+            #print("actionz")
+            #print(actions[action])
+            phi[i,actions[action]-self.first_pm] = 1
         return phi.flatten()
 
             
@@ -393,23 +406,26 @@ class FatTree:
         
         self.episode_costs.append(self.calc_total_cost())
         for i in range(self.episodes):
+            self.randomize_traffic()
             current_state = self.get_state()
             actions={}
-            for i in range(self.vm_pair_count*2):
-                if i % 2 == 0:
-                    actions[i*2]= self.select_action(current_state[i*2]) 
-                else:
-                    actions[i*2+1]= self.select_action(current_state[i*2+1]) 
+            for i in range(self.vm_pair_count):
+                actions[i * 2] = self.select_action(i * 2)  # Ingress VM
+                actions[i * 2 + 1] = self.select_action(i * 2 + 1)  # Egress VM 
                 
-
+            #print the actions
+            #print(actions)
             cost, next_phi = self.simulate_action(actions)
             phi = self.get_phi(actions)
 
             self.C+=cost
             self.z += cost * phi * cost
-            self.B+=np.outer(self.phi, (self.phi - self.discount_factor * next_phi))
+            print(self.z)
+            self.B+=np.outer(phi, (phi - self.discount_factor * next_phi))
 
             self.theta = self.B + self.z
+            print(phi)
+            print(self.theta)
             self.policy = self.policy_calculator(phi, self.theta)
             #finally,update the vm locations, but calculate migration cost before doing so
             episode_cost = 0
@@ -455,16 +471,25 @@ class FatTree:
 
     def policy_calculator(self, phi, theta):
         self.temperature *= np.exp(-self.epsilon)
+
         Q_values = []
+        
         for action_idx in range(self.d):  # Iterate over all actions
-            Q_value = np.dot(phi[action_idx], theta)
+            # Extract the feature vector corresponding to this action
+            start_idx = action_idx * len(theta)
+            end_idx = start_idx + len(theta)
+            phi_action = phi[start_idx:end_idx]
+
+            # Compute Q-value
+            Q_value = np.dot(phi_action, theta)
             Q_values.append(Q_value)
 
+        Q_values = np.array(Q_values)
         min_q = min(Q_values)
-        exp_values = np.exp([-(q - min_q) / self.temperature for q in Q_values])
-        sum_exp_values = sum(exp_values)
+        policy_probs = np.exp(-(Q_values - min_q) / self.temperature)
+        policy_probs /= np.sum(policy_probs)
 
-        self.policy = [exp_val / sum_exp_values for exp_val in exp_values]  # Normalize
+        self.policy = {action_idx: policy_probs[action_idx] for action_idx in range(self.d)}  # Normalize
 
         # Return updated policy as a dictionary or an array
         #return policy
