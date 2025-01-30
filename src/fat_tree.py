@@ -308,7 +308,7 @@ class FatTree:
         self.B = np.eye(self.d)
         #self.phi = np.zeros(self.d)
         self.theta = np.zeros(self.d)
-        self.z = np.zeros(self.d)
+        self.z = np.zeros((self.d,1))
         self.C = 0
         self.time=1
         #set all pm capacities to empty
@@ -349,12 +349,12 @@ class FatTree:
             
             #migration cost
             if(i%2==0):
-                total_cost+= self.distance(actions[i], self.vnfs[0], True)
-                total_cost*= self.vm_pairs[i//2].traffic_rate
+                total_cost+= self.distance(actions[i], self.vnfs[0], True) * self.vm_pairs[i//2].traffic_rate
+                #total_cost*= self.vm_pairs[i//2].traffic_rate
                 total_cost+= self.distance(self.vm_pairs[i//2].first_vm_location, actions[i], True) * self.migration_coefficient
             else:
-                total_cost+= self.distance(actions[i], self.vnfs[self.vnf_count-1], True)
-                total_cost*= self.vm_pairs[i//2].traffic_rate
+                total_cost+= self.distance(actions[i], self.vnfs[self.vnf_count-1], True) * self.vm_pairs[i//2].traffic_rate
+                #total_cost*= self.vm_pairs[i//2].traffic_rate
                 total_cost+= self.distance(self.vm_pairs[i//2].second_vm_location, actions[i], True) * self.migration_coefficient
 
         #save original location, set new location, get next action, get its phi, reset location to original, finally also return the nect phi
@@ -392,7 +392,7 @@ class FatTree:
             #print("actionz")
             #print(actions[action])
             phi[i,actions[action]-self.first_pm] = 1
-        return phi.flatten()
+        return phi.flatten().reshape(-1, 1)
 
             
 
@@ -406,6 +406,8 @@ class FatTree:
         
         self.episode_costs.append(self.calc_total_cost())
         for i in range(self.episodes):
+            for i in range(self.first_pm, self.last_pm + 1):
+                self.tree[i].capacity_left = self.pm_capacity
             self.randomize_traffic()
             current_state = self.get_state()
             actions={}
@@ -419,14 +421,26 @@ class FatTree:
             phi = self.get_phi(actions)
 
             self.C+=cost
-            self.z += cost * phi * cost
-            print(self.z)
-            self.B+=np.outer(phi, (phi - self.discount_factor * next_phi))
+            #print(f"Shape of B: {self.B.shape}")
+            #print(f"Shape of phi: {phi.shape}")
+            #print(f"Shape of next_phi: {next_phi.shape}")
+            #print(f"Shape of phi - self.discount_factor * next_phi: {(phi - self.discount_factor * next_phi).shape}")
+            #print(f"Shape of (phi - self.discount_factor * next_phi).T: {(phi - self.discount_factor * next_phi).T.shape}")
+            #self.T = self.T + np.outer(phi, phi - self.discount_factor * next_phi)
+            #self.B+=np.outer(phi, (phi - self.discount_factor * next_phi))
+            denom = 1+ (phi - self.discount_factor * next_phi).T @self.B @ phi
+            numer = self.B @ phi @(phi - self.discount_factor * next_phi).T @ self.B
+            self.B = self.B - numer/denom
 
-            self.theta = self.B + self.z
-            print(phi)
-            print(self.theta)
-            self.policy = self.policy_calculator(phi, self.theta)
+            self.z += phi * cost
+            #print(self.z)
+
+            #self.theta = self.B + self.z
+            self.theta = self.B @ self.z
+
+            #print(phi)
+            #print(self.theta)
+            self.policy_calculator(phi, self.theta)
             #finally,update the vm locations, but calculate migration cost before doing so
             episode_cost = 0
             #calculate the cost migration
@@ -469,28 +483,45 @@ class FatTree:
         plt.savefig('cost_over_time.png')
         
 
-    def policy_calculator(self, phi, theta):
+    def  policy_calculator(self, phi, theta):
         self.temperature *= np.exp(-self.epsilon)
 
         Q_values = []
         
         for action_idx in range(self.d):  # Iterate over all actions
             # Extract the feature vector corresponding to this action
-            start_idx = action_idx * len(theta)
-            end_idx = start_idx + len(theta)
-            phi_action = phi[start_idx:end_idx]
-
+            #print(len(theta))
+            
+            phi_action = np.zeros((self.d, 1))
+            #print(f"end_idx: {end_idx}")
+            #print(f"Shape of phi_action: {phi_action.shape}")
+            #print(f"Shape of phi_action.T: {phi_action.T.shape}")
+            #print(f"Shape of theta: {theta.shape}")
             # Compute Q-value
-            Q_value = np.dot(phi_action, theta)
+            phi_action[action_idx] = phi[action_idx]
+
+            Q_value = np.dot(phi_action.T, theta)
             Q_values.append(Q_value)
 
-        Q_values = np.array(Q_values)
+        Q_values = np.array(Q_values, dtype=float).flatten()
         min_q = min(Q_values)
-        policy_probs = np.exp(-(Q_values - min_q) / self.temperature)
-        policy_probs /= np.sum(policy_probs)
+        numer = -Q_values + min_q
+        policy_probs = np.exp( numer/ self.temperature)
+        #policy_probs /= np.sum(policy_probs)
+        for vm_i in range(self.vm_pair_count * 2):  # Iterate over VMs
+            pm_indices = list(range(vm_i * self.pm_count, (vm_i + 1) * self.pm_count))  # PM indices for this VM
+            total_prob = np.sum(policy_probs[pm_indices])
+    
+        if total_prob > 0:
+            policy_probs[pm_indices] /= total_prob  # Normalize within VM's PM choices
+        else:
+            print(f"Warning: No valid PMs for VM {vm_i}, assigning uniform distribution.")
+            policy_probs[pm_indices] = np.full(self.pm_count, 1 / self.pm_count)  # Assign uniform probabilities
 
-        self.policy = {action_idx: policy_probs[action_idx] for action_idx in range(self.d)}  # Normalize
-
+        #self.policy = {action_idx: policy_probs[action_idx] for action_idx in range(self.d)}  # Normalize
+        for vm_i in range(self.vm_pair_count * 2):  # Iterate over VMs
+            for pm_j, pm in enumerate(range(self.first_pm, self.last_pm + 1)):  # Iterate over PMs
+                self.policy[vm_i][pm] = policy_probs[vm_i * self.pm_count + pm_j] 
         # Return updated policy as a dictionary or an array
         #return policy
 
