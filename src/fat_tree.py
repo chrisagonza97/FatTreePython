@@ -23,7 +23,7 @@ class FatTree:
 
         self.discount_factor = 0.5
         self.episodes = 100
-        self.temperature = 3
+        self.temperature = 10000
         self.epsilon = 0.01
         self.q_table = {}
         self.episode_costs = []
