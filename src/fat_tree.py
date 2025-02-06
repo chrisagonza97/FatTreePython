@@ -19,7 +19,7 @@ class FatTree:
         self.vnf_capacity = vnf_capacity
         self.vnf_count = vnf_count
         self.pm_capacity = pm_capacity
-        self.migration_coefficient= 10
+        self.migration_coefficient= 50
 
         self.discount_factor = 0.5
         self.episodes = 100
