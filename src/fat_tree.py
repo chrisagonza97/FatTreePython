@@ -22,7 +22,7 @@ class FatTree:
         self.migration_coefficient= 50
 
         self.discount_factor = 0.5
-        self.episodes = 100
+        self.episodes = 1000
         self.temperature = 10000
         self.epsilon = 0.01
         self.q_table = {}
@@ -405,7 +405,7 @@ class FatTree:
         #self.policy = {vm: {pm: 1 / self.pm_count for pm in range(self.first_pm, self.last_pm + 1)} for vm in self.vm_pairs}
         
         self.episode_costs.append(self.calc_total_cost())
-        for i in range(self.episodes):
+        for j in range(self.episodes):
             for i in range(self.first_pm, self.last_pm + 1):
                 self.tree[i].capacity_left = self.pm_capacity
             self.randomize_traffic()
@@ -450,10 +450,24 @@ class FatTree:
 
             #update the vm locations
             for i in range(self.vm_pair_count):
+                #print vm old location and where its going next, every 10 episodes
+                if j%100==0:
+                    print(f"VM pair {i}: {self.vm_pairs[i].first_vm_location} -> {actions[i*2]}, {self.vm_pairs[i].second_vm_location} -> {actions[i*2+1]}")
+                    #also print migration cost+ communication cost
+                    print(f"Migration cost: {self.distance(self.vm_pairs[i].first_vm_location, actions[i*2], True) * self.migration_coefficient + self.distance(self.vm_pairs[i].second_vm_location, actions[i*2+1], True) * self.migration_coefficient}")
+                    print(f"Communication cost: {self.distance(self.vm_pairs[i].first_vm_location, self.vnfs[0], True) * self.vm_pairs[i].traffic_rate + self.distance(self.vnfs[self.vnf_count-1], self.vm_pairs[i].second_vm_location, True) * self.vm_pairs[i].traffic_rate}")
+                    #sum for total
+                    print(f"Total cost: {self.distance(self.vm_pairs[i].first_vm_location, actions[i*2], True) * self.migration_coefficient + self.distance(self.vm_pairs[i].second_vm_location, actions[i*2+1], True) * self.migration_coefficient + self.distance(self.vm_pairs[i].first_vm_location, self.vnfs[0], True) * self.vm_pairs[i].traffic_rate + self.distance(self.vnfs[self.vnf_count-1], self.vm_pairs[i].second_vm_location, True) * self.vm_pairs[i].traffic_rate}")
+
+
+
                 self.vm_pairs[i].first_vm_location = actions[i*2]
+                
                 self.vm_pairs[i].second_vm_location = actions[i*2+1]
             
             episode_cost+= self.calc_total_cost()
+            if j%100==0:
+                print(f"Episode {j}: Cost = {self.calc_total_cost()}")
             self.episode_costs.append(episode_cost)
             #plot the episodes costs over time
             self.plot_episodes_cost()
@@ -596,7 +610,7 @@ class FatTree:
         total_cost = 0
         for i in range(self.vm_pair_count):
             #total_cost += self.vm_pairs[i].get_communication_cost(self)
-            self.calc_pair_cost(self.vm_pairs[i])
+            total_cost+=self.calc_pair_cost(self.vm_pairs[i])
         return total_cost
 
     def vmp_mcf_file(self):
