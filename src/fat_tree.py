@@ -9,6 +9,7 @@ from .agg_switch import AggregateSwitch
 from .edge_switch import EdgeSwitch
 from .phys_machine import PhysicalMachine
 from .vm_pair import VmPair
+from .ac_migrate_pytorch import Actor, Critic
 
 
 class FatTree:
@@ -22,7 +23,7 @@ class FatTree:
         self.migration_coefficient= 50
 
         self.discount_factor = 0.5
-        self.episodes = 100
+        self.episodes = 20
         self.temperature = 10000
         self.epsilon = 0.01
         self.q_table = {}
@@ -397,82 +398,72 @@ class FatTree:
             
 
     def ac_migration(self):
-        #use Megh state projection
-        self.init_ac()
-        #there are d basis vectors
-        #d = self.vm_pair_count * 2 * self.pm_count
-        #initialize policy to equally do all migrations
-        #self.policy = {vm: {pm: 1 / self.pm_count for pm in range(self.first_pm, self.last_pm + 1)} for vm in self.vm_pairs}
-        
-        self.episode_costs.append(self.calc_total_cost())
-        for i in range(self.episodes):
-            for i in range(self.first_pm, self.last_pm + 1):
-                self.tree[i].capacity_left = self.pm_capacity
+        actor = Actor(input_dim=2, hidden_dim=64, output_dim=self.pm_count)
+        critic = Critic(input_dim=2, hidden_dim=64)
+        actor_optimizer = torch.optim.Adam(actor.parameters(), lr=0.01)
+        critic_optimizer = torch.optim.Adam(critic.parameters(), lr=0.01)
+
+        for episode in range(self.episodes):
             self.randomize_traffic()
-            current_state = self.get_state()
-            actions={}
-            for i in range(self.vm_pair_count):
-                actions[i * 2] = self.select_action(i * 2)  # Ingress VM
-                actions[i * 2 + 1] = self.select_action(i * 2 + 1)  # Egress VM 
-                
-            #print the actions
-            #print(actions)
-            cost, next_phi = self.simulate_action(actions)
-            phi = self.get_phi(actions)
-
-            self.C+=cost
-            #print(f"Shape of B: {self.B.shape}")
-            #print(f"Shape of phi: {phi.shape}")
-            #print(f"Shape of next_phi: {next_phi.shape}")
-            #print(f"Shape of phi - self.discount_factor * next_phi: {(phi - self.discount_factor * next_phi).shape}")
-            #print(f"Shape of (phi - self.discount_factor * next_phi).T: {(phi - self.discount_factor * next_phi).T.shape}")
-            #self.T = self.T + np.outer(phi, phi - self.discount_factor * next_phi)
-            #self.B+=np.outer(phi, (phi - self.discount_factor * next_phi))
-            denom = 1+ (phi - self.discount_factor * next_phi).T @self.B @ phi
-            numer = self.B @ phi @(phi - self.discount_factor * next_phi).T @ self.B
-            self.B = self.B - numer/denom
-
-            self.z += phi * cost
-            #print(self.z)
-
-            #self.theta = self.B + self.z
-            self.theta = self.B @ self.z
-
-            #print(phi)
-            #print(self.theta)
-            self.policy_calculator(phi, self.theta)
-            #finally,update the vm locations, but calculate migration cost before doing so
+            for pm in range(self.first_pm, self.last_pm+1):
+                self.tree[pm].capacity_left = self.pm_capacity
+            
             episode_cost = 0
-            #calculate the cost migration
-            for i in range(self.vm_pair_count):
-                episode_cost+= self.distance(self.vm_pairs[i].first_vm_location, actions[i*2], True) * self.migration_coefficient
-                episode_cost+= self.distance(self.vm_pairs[i].second_vm_location, actions[i*2+1], True) * self.migration_coefficient
 
-            #update the vm locations
-            for i in range(self.vm_pair_count):
-                self.vm_pairs[i].first_vm_location = actions[i*2]
-                self.vm_pairs[i].second_vm_location = actions[i*2+1]
-            
-            episode_cost+= self.calc_total_cost()
-            self.episode_costs.append(episode_cost)
-            #plot the episodes costs over time
+            sorted_pairs = self.get_sorted_pairs()
+            vm_indices_sorted = [np.where(self.vm_pairs == p)[0][0] for p in sorted_pairs]
+
+            for vm_i in range(self.vm_pair_count*2):
+                is_ingress = vm_i % 2 == 0
+                pair_i = vm_i // 2
+                curr_location = sorted_pairs[pair_i].first_vm_location if is_ingress else sorted_pairs[pair_i].second_vm_location
+                state = torch.tensor([vm_i, int(is_ingress)], dtype=torch.float32)
+                
+                #This uses OLD locations, not locations for this episode
+                #Get available PMs for actions
+                available_pms = [pm for pm in range(self.first_pm, self.last_pm + 1)
+                             if self.tree[pm].capacity_left > 0 and (
+                                 pm != sorted_pairs[pair_i].second_vm_location if is_ingress else pm != sorted_pairs[pair_i].first_vm_location)]
+                
+                logits= actor(state)
+                pm_logits = logits[[pm-self.first_pm for pm in available_pms]]
+                pm_probs = torch.softmax(pm_logits, dim=0)
+                actioni = torch.multinomial(pm_probs, 1).item()
+                selected_pm = available_pms[actioni]
+
+                #compute migration reward
+                old_loc = curr_location
+                new_loc = selected_pm
+                if is_ingress:
+                    reward = -self.distance(old_loc, new_loc, True) * self.migration_coefficient + self.distance(old_loc, self.vnfs[0], True) * sorted_pairs[pair_i].traffic_rate
+                    sorted_pairs[pair_i].first_vm_location = selected_pm
+                else:
+                    reward = -self.distance(old_loc, new_loc, True) * self.migration_coefficient + self.distance(old_loc, self.vnfs[-1], True) * self.vm_pairs[pair_i].traffic_rate
+                    sorted_pairs[pair_i].second_vm_location = selected_pm
+                episode_cost += -reward
+
+                #value estimates for critic
+                value = critic(state)
+                next_state = torch.tensor([vm_i+1, int((vm_i)%2==0)], dtype=torch.float32)
+                next_value = critic(next_state) if vm_i+1 < self.vm_pair_count*2 else torch.tensor(0.0)
+                td_target = reward + self.discount_factor * next_value
+                td_error = td_target - value
+
+                #update critic
+                critic_loss = td_error.pow(2)
+                critic_optimizer.zero_grad()
+                critic_loss.backward()
+                critic_optimizer.step()
+
+                #now update actor
+                log_prob = torch.log(pm_probs[actioni])
+                actor_loss = -log_prob * td_error.detach()
+                actor_optimizer.zero_grad()
+                actor_loss.backward()
+                actor_optimizer.step()
+            self.episode_costs.append(-episode_cost)
+            print(f"Episode {episode} - Cost: {-episode_cost}")
             self.plot_episodes_cost()
-
-            #actions = self.select_action(current_state)
-            #self.basis_vectors = np.zeros((self.d,len(current_state)))
-
-            #for i in range(self.d):
-                #self.basis_vectors[i] = np.random.rand(len(current_state))
-            
-            #initialize Q table
-            
-
-            #for vm_pair in self.vm_pairs:
-            #    vm_actions = {}
-             #   for pm in range(self.first_pm, self.last_pm + 1):
-              #      vm_actions[pm] = 0  # Start with zero reward for all actions
-               # self.q_table[vm_pair] = vm_actions
-        #pass
 
     def plot_episodes_cost(self):
         #save the plot to the project root directory
@@ -484,46 +475,7 @@ class FatTree:
         
 
     def  policy_calculator(self, phi, theta):
-        self.temperature *= np.exp(-self.epsilon)
-
-        Q_values = []
-        
-        for action_idx in range(self.d):  # Iterate over all actions
-            # Extract the feature vector corresponding to this action
-            #print(len(theta))
-            
-            phi_action = np.zeros((self.d, 1))
-            #print(f"end_idx: {end_idx}")
-            #print(f"Shape of phi_action: {phi_action.shape}")
-            #print(f"Shape of phi_action.T: {phi_action.T.shape}")
-            #print(f"Shape of theta: {theta.shape}")
-            # Compute Q-value
-            phi_action[action_idx] = phi[action_idx]
-
-            Q_value = np.dot(phi_action.T, theta)
-            Q_values.append(Q_value)
-
-        Q_values = np.array(Q_values, dtype=float).flatten()
-        min_q = min(Q_values)
-        numer = -Q_values + min_q
-        policy_probs = np.exp( numer/ self.temperature)
-        #policy_probs /= np.sum(policy_probs)
-        for vm_i in range(self.vm_pair_count * 2):  # Iterate over VMs
-            pm_indices = list(range(vm_i * self.pm_count, (vm_i + 1) * self.pm_count))  # PM indices for this VM
-            total_prob = np.sum(policy_probs[pm_indices])
-    
-        if total_prob > 0:
-            policy_probs[pm_indices] /= total_prob  # Normalize within VM's PM choices
-        else:
-            print(f"Warning: No valid PMs for VM {vm_i}, assigning uniform distribution.")
-            policy_probs[pm_indices] = np.full(self.pm_count, 1 / self.pm_count)  # Assign uniform probabilities
-
-        #self.policy = {action_idx: policy_probs[action_idx] for action_idx in range(self.d)}  # Normalize
-        for vm_i in range(self.vm_pair_count * 2):  # Iterate over VMs
-            for pm_j, pm in enumerate(range(self.first_pm, self.last_pm + 1)):  # Iterate over PMs
-                self.policy[vm_i][pm] = policy_probs[vm_i * self.pm_count + pm_j] 
-        # Return updated policy as a dictionary or an array
-        #return policy
+        pass
 
     def get_state(self):
         #State 
@@ -560,12 +512,6 @@ class FatTree:
             #elif(i>curr_pair):
             #    actions.append((i,-1,-1))#not assigned a pm, not its turn yet
     
-    def do_next_state(self, action):
-        curr_pair, pm1, pm2 = action
-        self.vm_pairs[curr_pair].first_vm_location = pm1
-        self.vm_pairs[curr_pair].second_vm_location = pm2
-        self.tree[pm1].add_vm()
-        self.tree[pm2].add_vm()
 
     def get_reward(self, action):
         # Reward is the negative of the difference in communication cost 
