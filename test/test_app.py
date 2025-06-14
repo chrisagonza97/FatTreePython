@@ -84,5 +84,20 @@ class TestApp(unittest.TestCase):
         self.assertEqual(test_tree.distance(test_tree.tree[6], test_tree.tree[8],False), 2)
         self.assertEqual(test_tree.distance(test_tree.tree[6], test_tree.tree[9],False), 4)
 
+    def test_vm_pair_placement(self):
+        test_tree = FatTree(4, 2, 3, 3, 2)
+        test_tree.vnfs[0]=5
+        test_tree.vnfs[1]=17
+        test_tree.vnfs[2]=11
+
+        test_tree.create_pairs_pal_place()
+
+        predicted_first_pair_cost = test_tree.vm_pairs[0].traffic_rate * 2 + test_tree.vm_pairs[0].traffic_rate * 2
+        predicted_second_pair_cost = test_tree.vm_pairs[1].traffic_rate * 2 + test_tree.vm_pairs[1].traffic_rate * 2
+
+        actual_total_pair_cost = test_tree.calc_total_cost()
+        self.assertEqual(actual_total_pair_cost, predicted_first_pair_cost + predicted_second_pair_cost)
+        
+
 if __name__ == '__main__':
     unittest.main()

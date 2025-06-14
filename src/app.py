@@ -10,7 +10,7 @@ class App:
         # Creating an instance of FatTree
         tree = FatTree(8, 1000, 3, 3, 40)
         tree.set_traffic_range(0, 1000)
-        tree.create_vm_pairs()
+        tree.create_pairs_pal_place()
         #tree.cs2_migration()
         tree.ac_migration()
         #state = tree.get_state()

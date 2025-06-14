@@ -286,6 +286,76 @@ class FatTree:
             rand_rate = random.randint(self.traffic_low, self.traffic_high)
             self.vm_pairs[i] = VmPair(first, second, rand_rate)
 
+    def create_pairs_pal_place(self):
+        #placing VM pairs based on PAL algorithm
+        self.create_vm_pairs()
+        resource_slots =[]
+        #there is a total of pm_count * pm_capacity slots available
+        for i in range(self.pm_count):
+            for j in range(self.pm_capacity):
+                tempICost = self.distance(self.vnfs[0], self.first_pm + i, True)
+                tempECost = self.distance(self.vnfs[self.vnf_count - 1], self.first_pm + i, True)
+
+                slot = {
+                    "pm_id": self.first_pm + i,
+                    "slot_id": (self.pm_count * i) + j,
+                    "i_cost": tempICost,
+                    "e_cost": tempECost,
+                    "selected": False
+                }
+                resource_slots.append(slot)
+        
+        iota = []
+        epsilon = []
+        i_opt=[]
+        e_opt=[]
+
+        sorted_by_icost = sorted(resource_slots, key=lambda slot: slot["i_cost"])
+        sorted_by_ecost = sorted(resource_slots, key=lambda slot: slot["e_cost"])
+
+        for i in range(self.vm_pair_count*2):
+            iota.append(sorted_by_icost[i])
+            epsilon.append(sorted_by_ecost[i])
+
+        i=j=k=0
+        while(k< self.vm_pair_count):
+            if(iota[i]["selected"]):
+                i+=1
+                continue
+            if(epsilon[j]["selected"]):
+                j+=1
+                continue
+            if(iota[i]["pm_id"] != epsilon[j]["pm_id"]):
+                i_opt.append(iota[i])
+                e_opt.append(epsilon[j])
+                iota[i]["selected"] = True
+                epsilon[j]["selected"] = True
+                i += 1
+                j += 1
+            else:
+                if(iota[i]["i_cost"] + epsilon[j+1]["e_cost"] < epsilon[j]["e_cost"] + iota[i+1]["i_cost"]):
+                    i_opt.append(iota[i])
+                    e_opt.append(epsilon[j+1])
+                    iota[i]["selected"] = True
+                    epsilon[j+1]["selected"] = True
+                    i += 1
+                    j += 2
+                else:
+                    i_opt.append(iota[i+1])
+                    e_opt.append(epsilon[j])
+                    iota[i+1]["selected"] = True
+                    epsilon[j]["selected"] = True
+                    i += 2
+                    j += 1
+            k += 1
+        sorted_pairs = sorted(self.vm_pairs, key=lambda vm_pair: vm_pair.traffic_rate, reverse=True)
+        for i in range(self.vm_pair_count):
+            sorted_pairs[i].first_vm_location = i_opt[i]["pm_id"]
+            sorted_pairs[i].second_vm_location = e_opt[i]["pm_id"]
+
+
+
+
     def randomize_traffic(self):
         # Using NumPy for efficient random traffic generation
         traffic_rates = np.random.randint(self.traffic_low, self.traffic_high + 1, len(self.vm_pairs))
