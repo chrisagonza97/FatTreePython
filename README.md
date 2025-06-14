@@ -17,7 +17,7 @@ A simulation and optimization framework for virtual machine (VM) placement and m
 
 Install dependencies (if using `requirements.txt`):
 
-## How to Run the Application (Not currently complete)
+## How to Run the Application \(Not currently complete\)
 
 Run the main FatTree simulation from the root directory:
 
