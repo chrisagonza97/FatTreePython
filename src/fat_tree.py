@@ -1,3 +1,4 @@
+import heapq
 import torch
 import numpy as np
 import random
@@ -9,6 +10,7 @@ from .agg_switch import AggregateSwitch
 from .edge_switch import EdgeSwitch
 from .phys_machine import PhysicalMachine
 from .vm_pair import VmPair
+from .sized_vm_pair import SizedVmPair
 from .ac_migrate_pytorch import Actor, Critic
 
 
@@ -286,8 +288,108 @@ class FatTree:
             rand_rate = random.randint(self.traffic_low, self.traffic_high)
             self.vm_pairs[i] = VmPair(first, second, rand_rate)
 
+    def create_sized_vm_pairs(self, lower_bound, upper_bound):
+        # Using random placement for VMs on physical machines
+        for i in range(self.vm_pair_count):
+            flag = True
+            while flag:
+                first = random.randint(self.first_pm, self.last_pm)
+                second = random.randint(self.first_pm, self.last_pm)
+                if first == second:
+                    continue
+                first_pm = self.tree[first]
+                second_pm = self.tree[second]
+                if first_pm.capacity_left <= 0 or second_pm.capacity_left <= 0:
+                    continue
+                flag = False
+
+            first_pm.add_vm()
+            second_pm.add_vm()
+            rand_rate = random.randint(self.traffic_low, self.traffic_high)
+            #create a random vm size between lower_bound and upper_bound
+            vm_size = random.randint(lower_bound, upper_bound)
+            self.vm_pairs[i] = SizedVmPair(first, second, rand_rate, vm_size)
+
+
+    def create_sized_pairs_ff_place(self, lower_bound, upper_bound):
+        #placing VM pairs based on PAL algorithm
+        #first call functions that create the VM pairs
+        #they are also placed randomly but, they are correctly placed in this function
+        self.create_sized_vm_pairs(lower_bound, upper_bound)
+        pm_slots = []
+        for i in range(self.pm_count):
+            tempICost = self.distance(self.vnfs[0], self.first_pm + i, True)
+            tempECost = self.distance(self.vnfs[self.vnf_count - 1], self.first_pm + i, True)
+            slot = {
+                "pm_id": self.first_pm + i,
+                "i_cost": tempICost,
+                "e_cost": tempECost,
+                "powered_on": False,
+                "open_slots": self.pm_capacity,
+            }
+            pm_slots.append(slot)
+
+        sorted_by_icost = sorted(pm_slots, key=lambda slot: slot["i_cost"])
+        sorted_by_ecost = sorted(pm_slots, key=lambda slot: slot["e_cost"])
+
+        powered_on_pms_i = []
+        powered_on_pms_e = []
+
+        #for slot in pm_slots:
+            #if slot["powered_on"]:
+                #heapq.heappush(self.powered_on_iheap, (slot["i_cost"], slot))
+                #heapq.heappush(self.powered_on_eheap, (slot["e_cost"], slot))
+        sorted_pairs = sorted(self.vm_pairs, key=lambda vm_pair: vm_pair.traffic_rate, reverse=True)
+        for i in range(self.vm_pair_count):
+            found_i_pm = False
+            for idx, (cost, slot) in enumerate(powered_on_pms_i):
+                if slot["open_slots"] >= sorted_pairs[i].vm_size:
+                    sorted_pairs[i].first_vm_location = slot["pm_id"]
+                    slot["open_slots"] -= sorted_pairs[i].vm_size
+                    found_i_pm = True
+                    if slot["open_slots"] == 0:
+                        powered_on_pms_i.pop(idx)
+                        heapq.heapify(powered_on_pms_i)
+                    break
+            if not found_i_pm:
+                slot = sorted_by_icost.pop(0)
+                slot["powered_on"] = True
+                slot["open_slots"] -= sorted_pairs[i].vm_size
+                sorted_pairs[i].first_vm_location = slot["pm_id"]
+                if slot["open_slots"] > 0:
+                    heapq.heappush(powered_on_pms_i, (slot["i_cost"], slot))
+
+            found_e_pm = False
+            for idx, (cost, slot) in enumerate(powered_on_pms_e):
+                if slot["open_slots"] >= sorted_pairs[i].vm_size:
+                    sorted_pairs[i].second_vm_location = slot["pm_id"]
+                    slot["open_slots"] -= sorted_pairs[i].vm_size
+                    found_e_pm = True
+                    if slot["open_slots"] == 0:
+                        powered_on_pms_e.pop(idx)
+                        heapq.heapify(powered_on_pms_e)
+                    break
+            if not found_e_pm:
+                slot = sorted_by_ecost.pop(0)
+                slot["powered_on"] = True
+                slot["open_slots"] -= sorted_pairs[i].vm_size
+                sorted_pairs[i].second_vm_location = slot["pm_id"]
+                if slot["open_slots"] > 0:
+                    heapq.heappush(powered_on_pms_e, (slot["e_cost"], slot))
+                    
+        #print out total cost of configuration
+        total_cost = 0
+        for i in range(self.vm_pair_count):
+            total_cost += self.calc_pair_cost(sorted_pairs[i])
+        print(f"Total cost of configuration for PAL placement: {total_cost}")
+
+            
+
+
     def create_pairs_pal_place(self):
         #placing VM pairs based on PAL algorithm
+        #first call functions that create the VM pairs
+        #they are also placed randomly but, they are correctly placed in this function
         self.create_vm_pairs()
         resource_slots =[]
         #there is a total of pm_count * pm_capacity slots available
@@ -352,6 +454,12 @@ class FatTree:
         for i in range(self.vm_pair_count):
             sorted_pairs[i].first_vm_location = i_opt[i]["pm_id"]
             sorted_pairs[i].second_vm_location = e_opt[i]["pm_id"]
+        
+        #print out total cost of configuration
+        total_cost = 0
+        for i in range(self.vm_pair_count):
+            total_cost += self.calc_pair_cost(sorted_pairs[i])
+        print(f"Total cost of configuration for PAL placement: {total_cost}")
 
 
 

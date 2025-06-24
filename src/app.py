@@ -11,8 +11,9 @@ class App:
         tree = FatTree(8, 1000, 3, 3, 40)
         tree.set_traffic_range(0, 1000)
         tree.create_pairs_pal_place()
+        tree.create_sized_pairs_pal_place(lower_bound=1, upper_bound=10)
         #tree.cs2_migration()
-        tree.ac_migration()
+        #tree.ac_migration()
         #state = tree.get_state()
         #print(state)
 
