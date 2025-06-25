@@ -342,7 +342,7 @@ class FatTree:
         sorted_pairs = sorted(self.vm_pairs, key=lambda vm_pair: vm_pair.traffic_rate, reverse=True)
         for i in range(self.vm_pair_count):
             found_i_pm = False
-            for idx, (cost, slot) in enumerate(powered_on_pms_i):
+            for idx, (cost, pm_id, slot) in enumerate(powered_on_pms_i):
                 if slot["open_slots"] >= sorted_pairs[i].vm_size:
                     sorted_pairs[i].first_vm_location = slot["pm_id"]
                     slot["open_slots"] -= sorted_pairs[i].vm_size
@@ -357,10 +357,11 @@ class FatTree:
                 slot["open_slots"] -= sorted_pairs[i].vm_size
                 sorted_pairs[i].first_vm_location = slot["pm_id"]
                 if slot["open_slots"] > 0:
-                    heapq.heappush(powered_on_pms_i, (slot["i_cost"], slot))
+                    heapq.heappush(powered_on_pms_i, (slot["i_cost"], slot["pm_id"], slot))
+
 
             found_e_pm = False
-            for idx, (cost, slot) in enumerate(powered_on_pms_e):
+            for idx, (cost, pm_id, slot) in enumerate(powered_on_pms_e):
                 if slot["open_slots"] >= sorted_pairs[i].vm_size:
                     sorted_pairs[i].second_vm_location = slot["pm_id"]
                     slot["open_slots"] -= sorted_pairs[i].vm_size
@@ -375,7 +376,8 @@ class FatTree:
                 slot["open_slots"] -= sorted_pairs[i].vm_size
                 sorted_pairs[i].second_vm_location = slot["pm_id"]
                 if slot["open_slots"] > 0:
-                    heapq.heappush(powered_on_pms_e, (slot["e_cost"], slot))
+                    heapq.heappush(powered_on_pms_e, (slot["e_cost"], slot["pm_id"], slot))
+
                     
         #print out total cost of configuration
         total_cost = 0
