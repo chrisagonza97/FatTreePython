@@ -288,6 +288,21 @@ class FatTree:
             rand_rate = random.randint(self.traffic_low, self.traffic_high)
             self.vm_pairs[i] = VmPair(first, second, rand_rate)
 
+    def save_curr_locations(self):
+        # Save current VM pair locations to old_locations
+        self.old_locations = []
+        for i in range(self.vm_pair_count):
+            self.old_locations.append(self.vm_pairs[i].first_vm_location)
+            self.old_locations.append(self.vm_pairs[i].second_vm_location)
+
+    def restore_old_locations(self):
+        # Restore VM pair locations from old_locations
+        if hasattr(self, 'old_locations'):
+            for i in range(self.vm_pair_count):
+                self.vm_pairs[i].first_vm_location = self.old_locations[i * 2]
+                self.vm_pairs[i].second_vm_location = self.old_locations[i * 2 + 1]
+        
+
     def create_sized_vm_pairs(self, lower_bound, upper_bound):
         # Using random placement for VMs on physical machines
         for i in range(self.vm_pair_count):
@@ -315,7 +330,9 @@ class FatTree:
         #placing VM pairs based on PAL algorithm
         #first call functions that create the VM pairs
         #they are also placed randomly but, they are correctly placed in this function
+        
         self.create_sized_vm_pairs(lower_bound, upper_bound)
+        self.save_curr_locations()
         pm_slots = []
         for i in range(self.pm_count):
             tempICost = self.distance(self.vnfs[0], self.first_pm + i, True)
@@ -383,10 +400,60 @@ class FatTree:
         total_cost = 0
         for i in range(self.vm_pair_count):
             total_cost += self.calc_pair_cost(sorted_pairs[i])
-        print(f"Total cost of configuration for PAL placement: {total_cost}")
+        print(f"Total cost of configuration for sized first fit placement: {total_cost}")
+        self.restore_old_locations()
+        return total_cost
 
-            
+    def create_pairs_sized_pal_place(self, lower_bound, upper_bound):
+        self.create_sized_vm_pairs(lower_bound, upper_bound)
+        pm_slots = []
+        for i in range(self.pm_count):
+            tempICost = self.distance(self.vnfs[0], self.first_pm + i, True)
+            tempECost = self.distance(self.vnfs[self.vnf_count - 1], self.first_pm + i, True)
+            slot = {
+                "pm_id": self.first_pm + i,
+                "i_cost": tempICost,
+                "e_cost": tempECost,
+                "powered_on": False,
+                "open_slots": self.pm_capacity,
+            }
+            pm_slots.append(slot)
 
+        sorted_by_icost = sorted(pm_slots, key=lambda slot: slot["i_cost"])
+        sorted_by_ecost = sorted(pm_slots, key=lambda slot: slot["e_cost"])
+        
+        sorted_pairs = sorted(self.vm_pairs, key=lambda vm_pair: vm_pair.traffic_rate, reverse=True)
+        #pair vm pair placed on first PM it fits in
+        for i in range(self.vm_pair_count):
+            found_i_pm = False
+            for idx, slot in enumerate(sorted_by_icost):   
+                if slot["open_slots"] >= sorted_pairs[i].vm_size:
+                    sorted_pairs[i].first_vm_location = slot["pm_id"]
+                    slot["open_slots"] -= sorted_pairs[i].vm_size
+                    found_i_pm = True
+                    if slot["open_slots"] == 0:
+                        sorted_by_icost.pop(idx)
+                    break
+            if not found_i_pm:
+                raise ValueError(f"No PM found for VM pair {i} with size {sorted_pairs[i].vm_size}")
+            found_e_pm = False
+            for idx, slot in enumerate(sorted_by_ecost):
+                if slot["open_slots"] >= sorted_pairs[i].vm_size:
+                    sorted_pairs[i].second_vm_location = slot["pm_id"]
+                    slot["open_slots"] -= sorted_pairs[i].vm_size
+                    found_e_pm = True
+                    if slot["open_slots"] == 0:
+                        sorted_by_ecost.pop(idx)
+                    break
+            if not found_e_pm:
+                raise ValueError(f"No PM found for VM pair {i} with size {sorted_pairs[i].vm_size}")
+        #print out total cost of configuration
+        total_cost = 0
+        for i in range(self.vm_pair_count):
+            total_cost += self.calc_pair_cost(sorted_pairs[i])
+        print(f"Total cost of configuration for sized PAL placement: {total_cost}")
+        return total_cost
+   
 
     def create_pairs_pal_place(self):
         #placing VM pairs based on PAL algorithm
