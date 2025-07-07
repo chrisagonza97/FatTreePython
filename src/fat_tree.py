@@ -405,7 +405,7 @@ class FatTree:
         return total_cost
 
     def create_pairs_sized_pal_place(self, lower_bound, upper_bound):
-        self.create_sized_vm_pairs(lower_bound, upper_bound)
+        #self.create_sized_vm_pairs(lower_bound, upper_bound)
         pm_slots = []
         for i in range(self.pm_count):
             tempICost = self.distance(self.vnfs[0], self.first_pm + i, True)
