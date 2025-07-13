@@ -424,29 +424,48 @@ class FatTree:
         
         sorted_pairs = sorted(self.vm_pairs, key=lambda vm_pair: vm_pair.traffic_rate, reverse=True)
         #pair vm pair placed on first PM it fits in
+        # Initialize next-fit pointers
+        current_i_pm_idx = 0
+        current_e_pm_idx = 0
+
+        # Place vm pairs using next-fit
         for i in range(self.vm_pair_count):
+            # Place first VM
             found_i_pm = False
-            for idx, slot in enumerate(sorted_by_icost):   
-                if slot["open_slots"] >= sorted_pairs[i].vm_size:
-                    sorted_pairs[i].first_vm_location = slot["pm_id"]
-                    slot["open_slots"] -= sorted_pairs[i].vm_size
+            while current_i_pm_idx < len(sorted_by_icost):
+                if sorted_by_icost[current_i_pm_idx]["open_slots"] >= sorted_pairs[i].vm_size:
+                    sorted_pairs[i].first_vm_location = sorted_by_icost[current_i_pm_idx]["pm_id"]
+                    sorted_by_icost[current_i_pm_idx]["open_slots"] -= sorted_pairs[i].vm_size
                     found_i_pm = True
-                    if slot["open_slots"] == 0:
-                        sorted_by_icost.pop(idx)
+                    # If current PM is full, move to next PM
+                    if sorted_by_icost[current_i_pm_idx]["open_slots"] == 0:
+                        current_i_pm_idx += 1
                     break
+                else:
+                    # Current PM doesn't have enough space, move to next
+                    current_i_pm_idx += 1
+            
             if not found_i_pm:
                 raise ValueError(f"No PM found for VM pair {i} with size {sorted_pairs[i].vm_size}")
+            
+            # Place second VM
             found_e_pm = False
-            for idx, slot in enumerate(sorted_by_ecost):
-                if slot["open_slots"] >= sorted_pairs[i].vm_size:
-                    sorted_pairs[i].second_vm_location = slot["pm_id"]
-                    slot["open_slots"] -= sorted_pairs[i].vm_size
+            while current_e_pm_idx < len(sorted_by_ecost):
+                if sorted_by_ecost[current_e_pm_idx]["open_slots"] >= sorted_pairs[i].vm_size:
+                    sorted_pairs[i].second_vm_location = sorted_by_ecost[current_e_pm_idx]["pm_id"]
+                    sorted_by_ecost[current_e_pm_idx]["open_slots"] -= sorted_pairs[i].vm_size
                     found_e_pm = True
-                    if slot["open_slots"] == 0:
-                        sorted_by_ecost.pop(idx)
+                    # If current PM is full, move to next PM
+                    if sorted_by_ecost[current_e_pm_idx]["open_slots"] == 0:
+                        current_e_pm_idx += 1
                     break
+                else:
+                    # Current PM doesn't have enough space, move to next
+                    current_e_pm_idx += 1
+            
             if not found_e_pm:
                 raise ValueError(f"No PM found for VM pair {i} with size {sorted_pairs[i].vm_size}")
+
         #print out total cost of configuration
         total_cost = 0
         for i in range(self.vm_pair_count):
