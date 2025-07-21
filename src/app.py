@@ -16,7 +16,7 @@ class App:
         pal_results = np.empty((4,10))
         for i in range(4):
             for j in range(10):
-                tree = FatTree(k=16, vm_pair_count=500 * (i + 1), vnf_capacity=3, vnf_count=3, pm_capacity=40)
+                tree = FatTree(k=16, vm_pair_count=1000 * (i + 1), vnf_capacity=3, vnf_count=3, pm_capacity=80)
                 tree.set_traffic_range(0, 1000)
                 ff_results[i][j]=tree.create_sized_pairs_ff_place(lower_bound=1, upper_bound=10)
                 pal_results[i][j]=tree.create_pairs_sized_pal_place(lower_bound=1, upper_bound=10)
@@ -38,14 +38,14 @@ class App:
         pal_ci = t_value * pal_std / np.sqrt(10)
 
         # Define x-axis labels
-        x_labels = [500, 1000, 1500, 2000]
+        x_labels = [1000, 2000, 3000, 4000]
         x = np.arange(len(x_labels))  # the label locations
         width = 0.35  # the width of the bars
 
         # Create the plot
         fig, ax = plt.subplots(figsize=(10, 6))
-        rects1 = ax.bar(x - width/2, ff_means, width, yerr=ff_ci, label='First Fit', capsize=5)
-        rects2 = ax.bar(x + width/2, pal_means, width, yerr=pal_ci, label='PAL', capsize=5)
+        rects1 = ax.bar(x - width/2, ff_means, width, yerr=ff_ci, label='First-Fit', capsize=5)
+        rects2 = ax.bar(x + width/2, pal_means, width, yerr=pal_ci, label='Next-Fit', capsize=5)
 
         # Add labels, title, and legend
         ax.set_ylabel('Average Communication Cost')
@@ -103,8 +103,8 @@ class App:
 
         # Create the plot
         fig, ax = plt.subplots(figsize=(10, 6))
-        rects1 = ax.bar(x - width/2, ff_means, width, yerr=ff_ci, label='First Fit', capsize=5)
-        rects2 = ax.bar(x + width/2, pal_means, width, yerr=pal_ci, label='PAL', capsize=5)
+        rects1 = ax.bar(x - width/2, ff_means, width, yerr=ff_ci, label='First-Fit', capsize=5)
+        rects2 = ax.bar(x + width/2, pal_means, width, yerr=pal_ci, label='Next-Fit', capsize=5)
 
         # Add labels, title, and legend
         ax.set_ylabel('Average Communication Cost')

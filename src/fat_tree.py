@@ -162,7 +162,7 @@ class FatTree:
             if (isinstance(one, CoreSwitch) and isinstance(two, AggregateSwitch)) or (isinstance(one, AggregateSwitch) and isinstance(two, CoreSwitch)):
                 if isinstance(one, CoreSwitch):
                     return 1 if two.id in one.aggr_edges else 3
-                return 1 if one.id in two.core_edges else 3
+                return 1 if one.id in two.aggr_edges else 3
 
             # Core to Edge or Edge to Core
             if (isinstance(one, CoreSwitch) and isinstance(two, EdgeSwitch)) or (isinstance(one, EdgeSwitch) and isinstance(two, CoreSwitch)):
@@ -324,6 +324,36 @@ class FatTree:
             #create a random vm size between lower_bound and upper_bound
             vm_size = random.randint(lower_bound, upper_bound)
             self.vm_pairs[i] = SizedVmPair(first, second, rand_rate, vm_size)
+        
+    def create_sized_vm_pairs_fb(self, lower_bound, upper_bound):
+        # Using random placement for VMs on physical machines
+        for i in range(self.vm_pair_count):
+            flag = True
+            while flag:
+                first = random.randint(self.first_pm, self.last_pm)
+                second = random.randint(self.first_pm, self.last_pm)
+                if first == second:
+                    continue
+                first_pm = self.tree[first]
+                second_pm = self.tree[second]
+                if first_pm.capacity_left <= 0 or second_pm.capacity_left <= 0:
+                    continue
+                flag = False
+
+            first_pm.add_vm()
+            second_pm.add_vm()
+             # Assign traffic rate based on weighted probability
+            prob = random.random()
+            if prob < 0.25:
+                rand_rate = random.randint(0, 299)  # light
+            elif prob < 0.95:
+                rand_rate = random.randint(300, 700)  # medium
+            else:
+                rand_rate = random.randint(701, 1000)  # heavy
+            #rand_rate = random.randint(self.traffic_low, self.traffic_high)
+            #create a random vm size between lower_bound and upper_bound
+            vm_size = random.randint(lower_bound, upper_bound)
+            self.vm_pairs[i] = SizedVmPair(first, second, rand_rate, vm_size)
 
 
     def create_sized_pairs_ff_place(self, lower_bound, upper_bound):
@@ -331,7 +361,7 @@ class FatTree:
         #first call functions that create the VM pairs
         #they are also placed randomly but, they are correctly placed in this function
         
-        self.create_sized_vm_pairs(lower_bound, upper_bound)
+        self.create_sized_vm_pairs_fb(lower_bound, upper_bound)
         self.save_curr_locations()
         pm_slots = []
         for i in range(self.pm_count):
@@ -799,6 +829,13 @@ class FatTree:
         last_vnf = self.vnfs[self.vnf_count - 1]
         #ingress
         cost = self.distance(vm_pair.first_vm_location, first_vnf, True)
+
+        # Intra-VNF chaining: VNF_i to VNF_{i+1}
+        for i in range(self.vnf_count - 1):
+            vnf_src = self.vnfs[i]
+            vnf_dst = self.vnfs[i + 1]
+            cost += self.distance(vnf_src, vnf_dst, True)
+
         #egress 
         cost+= self.distance(last_vnf, vm_pair.second_vm_location, True)
         cost *= vm_pair.traffic_rate
