@@ -110,7 +110,7 @@ class App:
         # Add labels, title, and legend
         ax.set_ylabel('Average Communication Cost')
         ax.set_xlabel('PM Capacity')
-        ax.set_title('Comparison of Placement Algorithms (1000 VM pairs)')
+        ax.set_title('Comparison of Placement Algorithms (500 VM pairs)')
         ax.set_xticks(x)
         ax.set_xticklabels(x_labels)
         ax.legend()
