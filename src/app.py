@@ -14,12 +14,13 @@ class App:
         #3 VNFs, k=16, PM capacity 
         ff_results = np.empty((4,10))
         pal_results = np.empty((4,10))
+        x = [200, 500, 800, 1000]
         for i in range(4):
             for j in range(10):
-                tree = FatTree(k=16, vm_pair_count=1000 * (i + 1), vnf_capacity=3, vnf_count=3, pm_capacity=80)
+                tree = FatTree(k=16, vm_pair_count=x[i], vnf_capacity=3, vnf_count=3, pm_capacity=40)
                 tree.set_traffic_range(0, 1000)
-                ff_results[i][j]=tree.create_sized_pairs_ff_place(lower_bound=1, upper_bound=10)
-                pal_results[i][j]=tree.create_pairs_sized_pal_place(lower_bound=1, upper_bound=10)
+                ff_results[i][j]=tree.create_sized_pairs_ff_place(lower_bound=1, upper_bound=8)
+                pal_results[i][j]=tree.create_pairs_sized_pal_place(lower_bound=1, upper_bound=8)
 
         # Compute means and standard errors
         ff_means = ff_results.mean(axis=1)
@@ -38,7 +39,7 @@ class App:
         pal_ci = t_value * pal_std / np.sqrt(10)
 
         # Define x-axis labels
-        x_labels = [1000, 2000, 3000, 4000]
+        x_labels = [200, 500, 800, 1000]
         x = np.arange(len(x_labels))  # the label locations
         width = 0.35  # the width of the bars
 
@@ -73,14 +74,14 @@ class App:
         # 3 VNFs, k=16, 1000 VM pairs
         ff_results = np.empty((4,10))
         pal_results = np.empty((4,10))
-        capacities = [20, 40, 60, 80]
+        capacities = [8, 10, 15, 20]
         
         for i in range(4):
             for j in range(10):
-                tree = FatTree(k=16, vm_pair_count=1000, vnf_capacity=3, vnf_count=3, pm_capacity=capacities[i])
+                tree = FatTree(k=16, vm_pair_count=500, vnf_capacity=3, vnf_count=3, pm_capacity=capacities[i])
                 tree.set_traffic_range(0, 1000)
-                ff_results[i][j] = tree.create_sized_pairs_ff_place(lower_bound=1, upper_bound=10)
-                pal_results[i][j] = tree.create_pairs_sized_pal_place(lower_bound=1, upper_bound=10)
+                ff_results[i][j] = tree.create_sized_pairs_ff_place(lower_bound=1, upper_bound=8)
+                pal_results[i][j] = tree.create_pairs_sized_pal_place(lower_bound=1, upper_bound=8)
 
         # Compute means and standard errors
         ff_means = ff_results.mean(axis=1)
