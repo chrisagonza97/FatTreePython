@@ -8,122 +8,145 @@ class App:
 
     @staticmethod
     def placement_compare_plot():
-        #first generate a plot where  the y axis is total communication cost of configuration
-        #x axis is number of VM pairs
-        #vary the number of VM pairs with 500, 1000, 1500, 2000
-        #3 VNFs, k=16, PM capacity 
+        # first generate a plot where the y axis is total communication cost of configuration
+        # x axis is number of VM pairs
+        # vary the number of VM pairs with 200, 500, 800, 1000
+        # 3 VNFs, k=16, PM capacity
         ff_results = np.empty((4,10))
         pal_results = np.empty((4,10))
-        x = [200, 500, 800, 1000]
+
+        ff_results_active_pms = np.empty((4,10))
+        pal_results_active_pms = np.empty((4,10))
+
+        x_counts = [200, 500, 800, 1000]
         for i in range(4):
             for j in range(10):
-                tree = FatTree(k=16, vm_pair_count=x[i], vnf_capacity=3, vnf_count=3, pm_capacity=40)
+                tree = FatTree(k=16, vm_pair_count=x_counts[i], vnf_capacity=3, vnf_count=3, pm_capacity=40)
                 tree.set_traffic_range(0, 1000)
-                ff_results[i][j]=tree.create_sized_pairs_ff_place(lower_bound=1, upper_bound=8)
-                pal_results[i][j]=tree.create_pairs_sized_pal_place(lower_bound=1, upper_bound=8)
+                ff_results[i][j], ff_results_active_pms[i][j] = tree.create_sized_pairs_ff_place(lower_bound=1, upper_bound=8)
+                pal_results[i][j], pal_results_active_pms[i][j] = tree.create_pairs_sized_pal_place(lower_bound=1, upper_bound=8)
 
-        # Compute means and standard errors
+        # --- Cost plot stats ---
         ff_means = ff_results.mean(axis=1)
         pal_means = pal_results.mean(axis=1)
+        ff_std = ff_results.std(axis=1, ddof=1)
+        pal_std = pal_results.std(axis=1, ddof=1)
 
-        # Calculate standard errors
-        ff_std = ff_results.std(axis=1)
-        pal_std = pal_results.std(axis=1)
+        # --- Active PMs plot stats ---
+        ff_active_means = ff_results_active_pms.mean(axis=1)
+        pal_active_means = pal_results_active_pms.mean(axis=1)
+        ff_active_std = ff_results_active_pms.std(axis=1, ddof=1)
+        pal_active_std = pal_results_active_pms.std(axis=1, ddof=1)
 
-        # Calculate 95% confidence intervals
-        # For 10 samples, use t-distribution with 9 degrees of freedom
-        # t-value for 95% CI with df=9 is approximately 2.262
-        
-        t_value = stats.t.ppf(0.975, df=9)  # 0.975 for two-tailed 95% CI
+        # 95% CI via t (df=9)
+        t_value = stats.t.ppf(0.975, df=9)
         ff_ci = t_value * ff_std / np.sqrt(10)
         pal_ci = t_value * pal_std / np.sqrt(10)
+        ff_active_ci = t_value * ff_active_std / np.sqrt(10)
+        pal_active_ci = t_value * pal_active_std / np.sqrt(10)
 
-        # Define x-axis labels
-        x_labels = [200, 500, 800, 1000]
-        x = np.arange(len(x_labels))  # the label locations
-        width = 0.35  # the width of the bars
+        # --- Cost figure ---
+        x = np.arange(len(x_counts))
+        width = 0.35
 
-        # Create the plot
-        fig, ax = plt.subplots(figsize=(10, 6))
-        rects1 = ax.bar(x - width/2, ff_means, width, yerr=ff_ci, label='First-Fit', capsize=5)
-        rects2 = ax.bar(x + width/2, pal_means, width, yerr=pal_ci, label='Next-Fit', capsize=5)
-
-        # Add labels, title, and legend
-        ax.set_ylabel('Average Communication Cost')
-        ax.set_xlabel('Number of VM Pairs')
-        ax.set_title('Comparison of Placement Algorithms')
-        ax.set_xticks(x)
-        ax.set_xticklabels(x_labels)
-        ax.legend()
-
-        # Add grid for better readability
-        ax.grid(True, axis='y', alpha=0.3)
-
-        # Show plot
+        fig_cost, ax_cost = plt.subplots(figsize=(10, 6))
+        ax_cost.bar(x - width/2, ff_means, width, yerr=ff_ci, label='First-Fit', capsize=5)
+        ax_cost.bar(x + width/2, pal_means, width, yerr=pal_ci, label='Next-Fit (PAL)', capsize=5)
+        ax_cost.set_ylabel('Average Communication Cost')
+        ax_cost.set_xlabel('Number of VM Pairs')
+        ax_cost.set_title('Comparison of Placement Algorithms: Cost')
+        ax_cost.set_xticks(x)
+        ax_cost.set_xticklabels(x_counts)
+        ax_cost.legend()
+        ax_cost.grid(True, axis='y', alpha=0.3)
         plt.tight_layout()
         plt.show()
+        fig_cost.savefig('placement_comparison_pairs_cost.png', dpi=300)
 
-        # Save plot to png
-        fig.savefig('placement_comparison_pairs.png', dpi=300)
-        
+        # --- Active PMs figure ---
+        fig_pm, ax_pm = plt.subplots(figsize=(10, 6))
+        ax_pm.bar(x - width/2, ff_active_means, width, yerr=ff_active_ci, label='First-Fit', capsize=5)
+        ax_pm.bar(x + width/2, pal_active_means, width, yerr=pal_active_ci, label='Next-Fit (PAL)', capsize=5)
+        ax_pm.set_ylabel('Average Active PMs (≥1 VM)')
+        ax_pm.set_xlabel('Number of VM Pairs')
+        ax_pm.set_title('Active PMs vs. VM Pair Count')
+        ax_pm.set_xticks(x)
+        ax_pm.set_xticklabels(x_counts)
+        ax_pm.legend()
+        ax_pm.grid(True, axis='y', alpha=0.3)
+        plt.tight_layout()
+        plt.show()
+        fig_pm.savefig('placement_comparison_pairs_active_pms.png', dpi=300)
+
     @staticmethod
     def placement_compare_plot_capacity():
-        # Generate a plot where y axis is total communication cost of configuration
-        # x axis is PM capacity
-        # vary the PM capacity with 20, 40, 60, 80
-        # 3 VNFs, k=16, 1000 VM pairs
+        # Generate plots vs PM capacity, 500 VM pairs
         ff_results = np.empty((4,10))
         pal_results = np.empty((4,10))
+
+        ff_results_active_pms = np.empty((4,10))
+        pal_results_active_pms = np.empty((4,10))
+
         capacities = [8, 10, 15, 20]
-        
         for i in range(4):
             for j in range(10):
                 tree = FatTree(k=16, vm_pair_count=500, vnf_capacity=3, vnf_count=3, pm_capacity=capacities[i])
                 tree.set_traffic_range(0, 1000)
-                ff_results[i][j] = tree.create_sized_pairs_ff_place(lower_bound=1, upper_bound=8)
-                pal_results[i][j] = tree.create_pairs_sized_pal_place(lower_bound=1, upper_bound=8)
+                ff_results[i][j], ff_results_active_pms[i][j] = tree.create_sized_pairs_ff_place(lower_bound=1, upper_bound=8)
+                pal_results[i][j], pal_results_active_pms[i][j] = tree.create_pairs_sized_pal_place(lower_bound=1, upper_bound=8)
 
-        # Compute means and standard errors
+        # --- Cost plot stats ---
         ff_means = ff_results.mean(axis=1)
         pal_means = pal_results.mean(axis=1)
+        ff_std = ff_results.std(axis=1, ddof=1)
+        pal_std = pal_results.std(axis=1, ddof=1)
 
-        # Calculate standard errors
-        ff_std = ff_results.std(axis=1)
-        pal_std = pal_results.std(axis=1)
+        # --- Active PMs plot stats ---
+        ff_active_means = ff_results_active_pms.mean(axis=1)
+        pal_active_means = pal_results_active_pms.mean(axis=1)
+        ff_active_std = ff_results_active_pms.std(axis=1, ddof=1)
+        pal_active_std = pal_results_active_pms.std(axis=1, ddof=1)
 
-        # Calculate 95% confidence intervals
-        # For 10 samples, use t-distribution with 9 degrees of freedom
-        t_value = stats.t.ppf(0.975, df=9)  # 0.975 for two-tailed 95% CI
+        # 95% CI via t (df=9)
+        t_value = stats.t.ppf(0.975, df=9)
         ff_ci = t_value * ff_std / np.sqrt(10)
         pal_ci = t_value * pal_std / np.sqrt(10)
+        ff_active_ci = t_value * ff_active_std / np.sqrt(10)
+        pal_active_ci = t_value * pal_active_std / np.sqrt(10)
 
-        # Define x-axis labels
-        x_labels = capacities
-        x = np.arange(len(x_labels))  # the label locations
-        width = 0.35  # the width of the bars
+        # --- Cost figure ---
+        x = np.arange(len(capacities))
+        width = 0.35
 
-        # Create the plot
-        fig, ax = plt.subplots(figsize=(10, 6))
-        rects1 = ax.bar(x - width/2, ff_means, width, yerr=ff_ci, label='First-Fit', capsize=5)
-        rects2 = ax.bar(x + width/2, pal_means, width, yerr=pal_ci, label='Next-Fit', capsize=5)
-
-        # Add labels, title, and legend
-        ax.set_ylabel('Average Communication Cost')
-        ax.set_xlabel('PM Capacity')
-        ax.set_title('Comparison of Placement Algorithms (500 VM pairs)')
-        ax.set_xticks(x)
-        ax.set_xticklabels(x_labels)
-        ax.legend()
-
-        # Add grid for better readability
-        ax.grid(True, axis='y', alpha=0.3)
-
-        # Show plot
+        fig_cost, ax_cost = plt.subplots(figsize=(10, 6))
+        ax_cost.bar(x - width/2, ff_means, width, yerr=ff_ci, label='First-Fit', capsize=5)
+        ax_cost.bar(x + width/2, pal_means, width, yerr=pal_ci, label='Next-Fit (PAL)', capsize=5)
+        ax_cost.set_ylabel('Average Communication Cost')
+        ax_cost.set_xlabel('PM Capacity')
+        ax_cost.set_title('Comparison of Placement Algorithms (500 VM pairs): Cost')
+        ax_cost.set_xticks(x)
+        ax_cost.set_xticklabels(capacities)
+        ax_cost.legend()
+        ax_cost.grid(True, axis='y', alpha=0.3)
         plt.tight_layout()
         plt.show()
+        fig_cost.savefig('placement_comparison_capacity_cost.png', dpi=300)
 
-        # Save plot to png
-        fig.savefig('placement_comparison_capacity.png', dpi=300)
+        # --- Active PMs figure ---
+        fig_pm, ax_pm = plt.subplots(figsize=(10, 6))
+        ax_pm.bar(x - width/2, ff_active_means, width, yerr=ff_active_ci, label='First-Fit', capsize=5)
+        ax_pm.bar(x + width/2, pal_active_means, width, yerr=pal_active_ci, label='Next-Fit (PAL)', capsize=5)
+        ax_pm.set_ylabel('Average Active PMs (≥1 VM)')
+        ax_pm.set_xlabel('PM Capacity')
+        ax_pm.set_title('Active PMs vs. PM Capacity (500 VM pairs)')
+        ax_pm.set_xticks(x)
+        ax_pm.set_xticklabels(capacities)
+        ax_pm.legend()
+        ax_pm.grid(True, axis='y', alpha=0.3)
+        plt.tight_layout()
+        plt.show()
+        fig_pm.savefig('placement_comparison_capacity_active_pms.png', dpi=300)
+
         
     @staticmethod
     def main():

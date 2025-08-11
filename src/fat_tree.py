@@ -386,6 +386,8 @@ class FatTree:
             #if slot["powered_on"]:
                 #heapq.heappush(self.powered_on_iheap, (slot["i_cost"], slot))
                 #heapq.heappush(self.powered_on_eheap, (slot["e_cost"], slot))
+        used_pms = set()
+
         sorted_pairs = sorted(self.vm_pairs, key=lambda vm_pair: vm_pair.traffic_rate, reverse=True)
         for i in range(self.vm_pair_count):
             found_i_pm = False
@@ -393,6 +395,7 @@ class FatTree:
                 if slot["open_slots"] >= sorted_pairs[i].vm_size:
                     sorted_pairs[i].first_vm_location = slot["pm_id"]
                     slot["open_slots"] -= sorted_pairs[i].vm_size
+                    used_pms.add(slot["pm_id"])
                     found_i_pm = True
                     if slot["open_slots"] == 0:
                         powered_on_pms_i.pop(idx)
@@ -403,6 +406,7 @@ class FatTree:
                 slot["powered_on"] = True
                 slot["open_slots"] -= sorted_pairs[i].vm_size
                 sorted_pairs[i].first_vm_location = slot["pm_id"]
+                used_pms.add(slot["pm_id"])
                 if slot["open_slots"] > 0:
                     heapq.heappush(powered_on_pms_i, (slot["i_cost"], slot["pm_id"], slot))
 
@@ -412,6 +416,7 @@ class FatTree:
                 if slot["open_slots"] >= sorted_pairs[i].vm_size:
                     sorted_pairs[i].second_vm_location = slot["pm_id"]
                     slot["open_slots"] -= sorted_pairs[i].vm_size
+                    used_pms.add(slot["pm_id"])
                     found_e_pm = True
                     if slot["open_slots"] == 0:
                         powered_on_pms_e.pop(idx)
@@ -422,6 +427,7 @@ class FatTree:
                 slot["powered_on"] = True
                 slot["open_slots"] -= sorted_pairs[i].vm_size
                 sorted_pairs[i].second_vm_location = slot["pm_id"]
+                used_pms.add(slot["pm_id"])
                 if slot["open_slots"] > 0:
                     heapq.heappush(powered_on_pms_e, (slot["e_cost"], slot["pm_id"], slot))
 
@@ -432,7 +438,8 @@ class FatTree:
             total_cost += self.calc_pair_cost(sorted_pairs[i])
         print(f"Total cost of configuration for sized first fit placement: {total_cost}")
         self.restore_old_locations()
-        return total_cost
+        used_pm_count = len(used_pms)
+        return total_cost, used_pm_count
 
     def create_pairs_sized_pal_place(self, lower_bound, upper_bound):
         #self.create_sized_vm_pairs(lower_bound, upper_bound)
@@ -458,6 +465,7 @@ class FatTree:
         current_i_pm_idx = 0
         current_e_pm_idx = 0
 
+        used_pms = set()
         # Place vm pairs using next-fit
         for i in range(self.vm_pair_count):
             # Place first VM
@@ -466,6 +474,7 @@ class FatTree:
                 if sorted_by_icost[current_i_pm_idx]["open_slots"] >= sorted_pairs[i].vm_size:
                     sorted_pairs[i].first_vm_location = sorted_by_icost[current_i_pm_idx]["pm_id"]
                     sorted_by_icost[current_i_pm_idx]["open_slots"] -= sorted_pairs[i].vm_size
+                    used_pms.add(sorted_by_icost[current_i_pm_idx]["pm_id"])
                     found_i_pm = True
                     # If current PM is full, move to next PM
                     if sorted_by_icost[current_i_pm_idx]["open_slots"] == 0:
@@ -484,6 +493,7 @@ class FatTree:
                 if sorted_by_ecost[current_e_pm_idx]["open_slots"] >= sorted_pairs[i].vm_size:
                     sorted_pairs[i].second_vm_location = sorted_by_ecost[current_e_pm_idx]["pm_id"]
                     sorted_by_ecost[current_e_pm_idx]["open_slots"] -= sorted_pairs[i].vm_size
+                    used_pms.add(sorted_by_ecost[current_e_pm_idx]["pm_id"])
                     found_e_pm = True
                     # If current PM is full, move to next PM
                     if sorted_by_ecost[current_e_pm_idx]["open_slots"] == 0:
@@ -501,7 +511,10 @@ class FatTree:
         for i in range(self.vm_pair_count):
             total_cost += self.calc_pair_cost(sorted_pairs[i])
         print(f"Total cost of configuration for sized PAL placement: {total_cost}")
-        return total_cost
+
+        used_pm_count = len(used_pms)
+
+        return total_cost, used_pm_count
    
 
     def create_pairs_pal_place(self):
