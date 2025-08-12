@@ -1,3 +1,4 @@
+import csv
 from src.fat_tree import FatTree
 import numpy as np
 import matplotlib.pyplot as plt
@@ -21,7 +22,7 @@ class App:
         x_counts = [200, 500, 800, 1000]
         for i in range(4):
             for j in range(10):
-                tree = FatTree(k=16, vm_pair_count=x_counts[i], vnf_capacity=3, vnf_count=3, pm_capacity=40)
+                tree = FatTree(k=16, vm_pair_count=x_counts[i], vnf_capacity=3, vnf_count=3, pm_capacity=12)
                 tree.set_traffic_range(0, 1000)
                 ff_results[i][j], ff_results_active_pms[i][j] = tree.create_sized_pairs_ff_place(lower_bound=1, upper_bound=8)
                 pal_results[i][j], pal_results_active_pms[i][j] = tree.create_pairs_sized_pal_place(lower_bound=1, upper_bound=8)
@@ -44,6 +45,19 @@ class App:
         pal_ci = t_value * pal_std / np.sqrt(10)
         ff_active_ci = t_value * ff_active_std / np.sqrt(10)
         pal_active_ci = t_value * pal_active_std / np.sqrt(10)
+        
+        
+        # === DAT export for GNUplot ===
+        with open('CostOverPairs.dat', 'w') as f:
+            f.write("# vm_pairs FF_mean FF_CI PAL_mean PAL_CI\n")
+            for xi, ffm, ffc, palm, palc in zip(x_counts, ff_means, ff_ci, pal_means, pal_ci):
+                f.write(f"{xi} {ffm:.6f} {ffc:.6f} {palm:.6f} {palc:.6f}\n")
+
+        with open('ActiveOverPairs.dat', 'w') as f:
+            f.write("# vm_pairs FF_mean FF_CI PAL_mean PAL_CI\n")
+            for xi, ffm, ffc, palm, palc in zip(x_counts, ff_active_means, ff_active_ci, pal_active_means, pal_active_ci):
+                f.write(f"{xi} {ffm:.6f} {ffc:.6f} {palm:.6f} {palc:.6f}\n")
+
 
         # --- Cost figure ---
         x = np.arange(len(x_counts))
@@ -113,6 +127,19 @@ class App:
         pal_ci = t_value * pal_std / np.sqrt(10)
         ff_active_ci = t_value * ff_active_std / np.sqrt(10)
         pal_active_ci = t_value * pal_active_std / np.sqrt(10)
+        
+        
+        # === DAT export for GNUplot ===
+        with open('CostOverCapacity.dat', 'w') as f:
+            f.write("# pm_capacity FF_mean FF_CI PAL_mean PAL_CI\n")
+            for cap, ffm, ffc, palm, palc in zip(capacities, ff_means, ff_ci, pal_means, pal_ci):
+                f.write(f"{cap} {ffm:.6f} {ffc:.6f} {palm:.6f} {palc:.6f}\n")
+
+        with open('ActiveOverCapacity.dat', 'w') as f:
+            f.write("# pm_capacity FF_mean FF_CI PAL_mean PAL_CI\n")
+            for cap, ffm, ffc, palm, palc in zip(capacities, ff_active_means, ff_active_ci, pal_active_means, pal_active_ci):
+                f.write(f"{cap} {ffm:.6f} {ffc:.6f} {palm:.6f} {palc:.6f}\n")
+
 
         # --- Cost figure ---
         x = np.arange(len(capacities))

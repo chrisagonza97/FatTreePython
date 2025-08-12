@@ -1,0 +1,27 @@
+#set terminal enhanced font "Helvetica,18"
+#set terminal postscript enhanced font "Helvetica,32"
+set termoption enhanced
+set terminal postscript eps enhanced
+#set terminal postscript enhanced font eps
+set term eps
+set auto x
+#set auto y
+#unset yrange
+set yrange [0:710]
+set key right top
+set key font ",30"
+set style data histogram
+set style histogram cluster gap 1
+set term eps
+set style fill pattern border -1
+#set boxwidth 0.5
+set style histogram errorbars gap 1 lw 1
+set size 1.1,1.1
+set xlabel 'PM Capacity'
+set ylabel 'Average Active PMs'
+set terminal postscript eps solid color lw 1 "Arial" 30
+set offset 0,0,0,0
+
+set output 'ActiveOverCapacity.eps'
+plot 'ActiveOverCapacity.dat' using 2:3 t 'First-Fit', \
+     '' using 4:5:xticlabels(1) t 'Next-Fit (PAL)'
