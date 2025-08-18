@@ -9,7 +9,7 @@ set auto x
 #unset yrange
 set yrange [0:710]
 set key right top
-set key font ",30"
+set key font ",36"
 set style data histogram
 set style histogram cluster gap 1
 set term eps
@@ -17,11 +17,13 @@ set style fill pattern border -1
 #set boxwidth 0.5
 set style histogram errorbars gap 1 lw 1
 set size 1.1,1.1
-set xlabel 'PM Capacity'
-set ylabel 'Average Active PMs'
+set xlabel 'PM Resource Capacity' font ",42"
+set ylabel 'Total Active PMs' font ",42"
+set xtics font ",42"
+set ytics font ",42"
 set terminal postscript eps solid color lw 1 "Arial" 30
 set offset 0,0,0,0
 
 set output 'ActiveOverCapacity.eps'
-plot 'ActiveOverCapacity.dat' using 2:3 t 'First-Fit', \
-     '' using 4:5:xticlabels(1) t 'Next-Fit (PAL)'
+plot 'ActiveOverCapacity.dat' using 2:3 t 'PAL-H', \
+     '' using 4:5:xticlabels(1) t 'PAL'
