@@ -12,6 +12,7 @@ from .phys_machine import PhysicalMachine
 from .vm_pair import VmPair
 from .sized_vm_pair import SizedVmPair
 from .ac_migrate_pytorch import Actor, Critic
+import pulp as pl
 
 
 class FatTree:
@@ -516,6 +517,96 @@ class FatTree:
 
         return total_cost, used_pm_count
    
+    def make_t(self):
+        #t will be a 2d array
+        #first dimension size is number of VMs (vm pairs *2)
+        #second dimension size is number of PMS
+        n_v = self.vm_pair_count * 2
+        n_p = self.pm_count
+        t = [[0 for _ in range(n_p)] for _ in range (n_v)]
+
+        ingress_sw = self.vnfs[0]
+        egress_sw = self.vnfs[self.vnf_count - 1]
+
+        for i in range(self.vm_pair_count):
+            pair = self.vm_pairs[i]
+            lam = pair.traffic_rate
+
+            for j in range(n_p):
+                pm_id = self.first_pm + j
+
+                # ingress VM (index 2*i)
+                mig_i  = self.migration_coefficient * self.distance(pair.first_vm_location, pm_id, True)
+                comm_i = lam * self.distance(pm_id, ingress_sw, True)
+                t[2 * i][j] = mig_i + comm_i
+
+                # egress VM (index 2*i+1)
+                mig_e  = self.migration_coefficient * self.distance(pair.second_vm_location, pm_id, True)
+                comm_e = lam * self.distance(pm_id, egress_sw, True)
+                t[2 * i + 1][j] = mig_e + comm_e
+
+        return t
+
+    def make_d(self):
+        d = []
+        for i in range(self.vm_pair_count):
+            pair = self.vm_pairs[i]
+            size = getattr(pair, "vm_size", 1)
+            d.extend([int(size), int(size)])
+        return d
+    
+    def make_rc(self):
+        return [int(self.pm_capacity)] * self.pm_count
+
+    def migrate_pamh(self):
+        #first, create t data structure
+        t = self.make_t()
+        d = self.make_d()
+        rc = self.make_rc()
+        n_v = self.vm_pair_count * 2
+        n_p = self.pm_count
+
+        name = "PAMH_ILP"
+        prob = pl.LpProblem(name, pl.Minimize )
+        #(8) creating decision variables
+        x={}
+        for v in range(n_v):
+            for j in range(n_p):
+                x[v, j] = pl.LpVariable(f"x_{v}_{j}", lowBound=0, upBound=1, cat=pl.LpBinary)
+        #(9) Each VM assigned to exactly one PM
+        for v in range(n_v):
+            terms = [x[v, j] for j in range(n_p) if (v, j) in x]
+            if not terms:
+                raise ValueError(f"VM {v} has no allowed PMs.")
+            prob += pl.lpSum(terms) == 1, f"assign_once_v{v}"
+        #(10) PM capacity
+        for j in range(n_p):
+            terms = [d[v] * x[v, j] for v in range(n_v) if (v, j) in x]
+            if terms:
+                prob += pl.lpSum(terms) <= rc[j], f"cap_pm{j}"
+        
+        # (7) Objective
+        prob += pl.lpSum(t[v][j] * x[v, j] for v in range(n_v) for j in range(n_p) if (v, j) in x)
+
+        #solver
+        solver = pl.PULP_CBC_CMD(msg=False, timeLimit=None)
+
+        status_code = prob.solve(solver)
+        status = pl.LpStatus[status_code]
+
+        # Extract solution
+        assignment = [-1] * n_v
+        for v in range(n_v):
+            for j in range(n_p):
+                var = x.get((v, j))
+                if var is not None and pl.value(var) > 0.5:
+                    assignment[v] = j
+                    break
+
+        used_pms = sorted(set(a for a in assignment if a != -1))
+        obj_value = pl.value(prob.objective)
+
+        return assignment, obj_value, used_pms, status
 
     def create_pairs_pal_place(self):
         #placing VM pairs based on PAL algorithm
