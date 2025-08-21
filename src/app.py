@@ -174,7 +174,101 @@ class App:
         plt.show()
         fig_pm.savefig('placement_comparison_capacity_active_pms.png', dpi=300)
 
-        
+    @staticmethod
+    def migration_compare_plot_mu():
+        # Fixed experiment settings
+        k = 16
+        vm_pairs = 500
+        vnf_count = 3
+        vnf_capacity = 3
+        pm_capacity = 12
+        lower_size, upper_size = 1, 8
+        trials = 10
+
+        mus = [0, 50, 100, 200, 300, 400, 500]
+
+        ilp_cost   = np.empty((len(mus), trials))
+        plan_cost  = np.empty((len(mus), trials))
+        ilp_active = np.empty((len(mus), trials))
+        plan_active= np.empty((len(mus), trials))
+
+        for i, mu in enumerate(mus):
+            for j in range(trials):
+                # 1) Build baseline instance ONCE per trial
+                tree = FatTree(k=k, vm_pair_count=vm_pairs, vnf_capacity=vnf_capacity,
+                            vnf_count=vnf_count, pm_capacity=pm_capacity)
+                tree.set_traffic_range(0, 1000)
+                # initial random placement + initial (FB) traffic
+                tree.create_sized_vm_pairs_fb(lower_bound=lower_size, upper_bound=upper_size)
+
+                # 2) Now create a “reason to migrate”: new traffic + empty PMs
+                tree.randomize_traffic()
+                tree.reset_pms()
+
+                # 3) Set migration coefficient for this run
+                tree.migration_coefficient = mu
+
+                # 4) ILP (does not modify tree)
+                assign, obj_value, used_pms, status = tree.migrate_pamh_ilp()
+                ilp_cost[i, j]   = obj_value
+                ilp_active[i, j] = len(used_pms)
+
+                # 5) Greedy on the SAME baseline state (apply=False ensures no mutation)
+                _, plan_total_cost, plan_used_pm_count = tree.migrate_pamh_plan(apply=False)
+                plan_cost[i, j]   = plan_total_cost
+                plan_active[i, j] = plan_used_pm_count
+
+        # --- Stats (95% CI, df=9) ---
+        tval = stats.t.ppf(0.975, df=trials-1)
+
+        def mean_ci(M):
+            m = M.mean(axis=1); s = M.std(axis=1, ddof=1)
+            return m, tval * s / np.sqrt(trials)
+
+        ilp_mean,  ilp_ci  = mean_ci(ilp_cost)
+        plan_mean, plan_ci = mean_ci(plan_cost)
+        ilpA_mean, ilpA_ci = mean_ci(ilp_active)
+        planA_mean, planA_ci = mean_ci(plan_active)
+
+        # --- DAT export for gnuplot ---
+        with open('CostOverMu.dat', 'w') as f:
+            f.write("# mu ILP_mean ILP_CI PLAN_mean PLAN_CI\n")
+            for mu, im, ic, pm, pc in zip(mus, ilp_mean, ilp_ci, plan_mean, plan_ci):
+                f.write(f"{mu} {im:.6f} {ic:.6f} {pm:.6f} {pc:.6f}\n")
+
+        with open('ActiveOverMu.dat', 'w') as f:
+            f.write("# mu ILP_mean ILP_CI PLAN_mean PLAN_CI\n")
+            for mu, im, ic, pm, pc in zip(mus, ilpA_mean, ilpA_ci, planA_mean, planA_ci):
+                f.write(f"{mu} {im:.6f} {ic:.6f} {pm:.6f} {pc:.6f}\n")
+
+        # --- Matplotlib figures ---
+        x = np.arange(len(mus))
+        width = 0.35
+
+        # Cost
+        fig1, ax1 = plt.subplots(figsize=(10, 6))
+        ax1.bar(x - width/2, ilp_mean,  width, yerr=ilp_ci,  label='ILP', capsize=5)
+        ax1.bar(x + width/2, plan_mean, width, yerr=plan_ci, label='Greedy (PLAN)', capsize=5)
+        ax1.set_xlabel('Migration coefficient μ')
+        ax1.set_ylabel('Total Cost')
+        ax1.set_title('ILP vs Greedy (PLAN): Total Cost vs μ (500 VM pairs, PM cap=12)')
+        ax1.set_xticks(x); ax1.set_xticklabels(mus)
+        ax1.legend(); ax1.grid(True, axis='y', alpha=0.3)
+        plt.tight_layout(); plt.show()
+        fig1.savefig('MigrationCompare_CostOverMu.png', dpi=300)
+
+        # Active PMs
+        fig2, ax2 = plt.subplots(figsize=(10, 6))
+        ax2.bar(x - width/2, ilpA_mean,  width, yerr=ilpA_ci,  label='ILP', capsize=5)
+        ax2.bar(x + width/2, planA_mean, width, yerr=planA_ci, label='Greedy (PLAN)', capsize=5)
+        ax2.set_xlabel('Migration coefficient μ')
+        ax2.set_ylabel('Active PMs (≥1 VM)')
+        ax2.set_title('ILP vs Greedy (PLAN): Active PMs vs μ (500 VM pairs, PM cap=12)')
+        ax2.set_xticks(x); ax2.set_xticklabels(mus)
+        ax2.legend(); ax2.grid(True, axis='y', alpha=0.3)
+        plt.tight_layout(); plt.show()
+        fig2.savefig('MigrationCompare_ActiveOverMu.png', dpi=300)
+
     @staticmethod
     def main():
         # Creating an instance of FatTree
@@ -185,6 +279,7 @@ class App:
         #tree.create_pairs_sized_pal_place(lower_bound=1, upper_bound=10)
         App.placement_compare_plot()
         App.placement_compare_plot_capacity()
+        App.migration_compare_plot_mu()
         #tree.cs2_migration()
         #tree.ac_migration()
         #state = tree.get_state()

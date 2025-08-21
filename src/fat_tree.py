@@ -558,55 +558,148 @@ class FatTree:
     def make_rc(self):
         return [int(self.pm_capacity)] * self.pm_count
 
-    def migrate_pamh(self):
-        #first, create t data structure
-        t = self.make_t()
-        d = self.make_d()
+    def migrate_pamh_ilp(
+        self,
+        log: bool = True,
+        time_limit: float | None = None,
+        gap: float | None = None,       # relative MIP gap (e.g., 0.01 for 1%)
+        threads: int | None = None,
+        write_lp: bool = False,
+    keep_files: bool = False,
+    ):
+        # 1) Build data
+        t  = self.make_t()
+        d  = self.make_d()
         rc = self.make_rc()
         n_v = self.vm_pair_count * 2
         n_p = self.pm_count
 
-        name = "PAMH_ILP"
-        prob = pl.LpProblem(name, pl.Minimize )
-        #(8) creating decision variables
-        x={}
-        for v in range(n_v):
-            for j in range(n_p):
-                x[v, j] = pl.LpVariable(f"x_{v}_{j}", lowBound=0, upBound=1, cat=pl.LpBinary)
-        #(9) Each VM assigned to exactly one PM
-        for v in range(n_v):
-            terms = [x[v, j] for j in range(n_p) if (v, j) in x]
-            if not terms:
-                raise ValueError(f"VM {v} has no allowed PMs.")
-            prob += pl.lpSum(terms) == 1, f"assign_once_v{v}"
-        #(10) PM capacity
-        for j in range(n_p):
-            terms = [d[v] * x[v, j] for v in range(n_v) if (v, j) in x]
-            if terms:
-                prob += pl.lpSum(terms) <= rc[j], f"cap_pm{j}"
-        
-        # (7) Objective
-        prob += pl.lpSum(t[v][j] * x[v, j] for v in range(n_v) for j in range(n_p) if (v, j) in x)
+        # 2) Model
+        prob = pl.LpProblem("PAMH_ILP", pl.LpMinimize)
 
-        #solver
-        solver = pl.PULP_CBC_CMD(msg=False, timeLimit=None)
+        # (8) Vars
+        x = {(v, j): pl.LpVariable(f"x_{v}_{j}", 0, 1, pl.LpBinary)
+            for v in range(n_v) for j in range(n_p)}
+
+        # (9) Each VM exactly once
+        for v in range(n_v):
+            prob += pl.lpSum(x[v, j] for j in range(n_p)) == 1, f"assign_once_v{v}"
+
+        # (10) PM capacity
+        for j in range(n_p):
+            prob += pl.lpSum(d[v] * x[v, j] for v in range(n_v)) <= rc[j], f"cap_pm{j}"
+
+        # (7) Objective
+        prob += pl.lpSum(t[v][j] * x[v, j] for v in range(n_v) for j in range(n_p))
+
+        # Optional: write .lp for inspection
+        if write_lp:
+            prob.writeLP("PAMH_ILP.lp")
+
+        # --- Solver (CBC) with progress logging and portable gap control ---
+        cbc_opts = []
+        if log:
+            # more verbose log (2); omit if too chatty
+            cbc_opts += ["-log", "2"]
+        if gap is not None:
+            # CBC's relative MIP gap (e.g., 0.01 for 1%)
+            cbc_opts += ["-ratio", str(gap)]
+
+        solver = pl.PULP_CBC_CMD(
+            msg=log,                 # print CBC progress
+            timeLimit=time_limit,    # seconds (None = no limit)
+            threads=threads,         # None = CBC default
+            keepFiles=keep_files,    # keep temp files for inspection
+            mip=True,
+            options=cbc_opts,        # <-- pass -ratio / -log here
+        )
 
         status_code = prob.solve(solver)
         status = pl.LpStatus[status_code]
 
-        # Extract solution
+        # 4) Extract solution
         assignment = [-1] * n_v
         for v in range(n_v):
             for j in range(n_p):
-                var = x.get((v, j))
-                if var is not None and pl.value(var) > 0.5:
+                if pl.value(x[v, j]) > 0.5:
                     assignment[v] = j
                     break
 
-        used_pms = sorted(set(a for a in assignment if a != -1))
+        used_pms = sorted({a for a in assignment if a != -1})
         obj_value = pl.value(prob.objective)
 
         return assignment, obj_value, used_pms, status
+    
+    def migrate_pamh_plan(self, apply=True):
+        """
+        Greedy PAM-H repack into empty PMs.
+        Returns:
+            total_cost (float): sum_v t[v][assigned_j]
+            used_pm_count (int): number of PMs with ≥1 VM
+        """
+        # Costs / sizes / capacities
+        t  = self.make_t()        # [n_v][n_p]
+        d  = self.make_d()        # [n_v]
+        rc = self.make_rc()       # [n_p]
+        n_v = self.vm_pair_count * 2
+        n_p = self.pm_count
+
+        # PMs start empty (local capacities; we don't touch self.tree here)
+        cap = rc[:]
+
+        # Old communication cost per VM (pre-migration)
+        ingress_sw = self.vnfs[0]
+        egress_sw  = self.vnfs[self.vnf_count - 1]
+        old_comm = [0.0] * n_v
+        for i in range(self.vm_pair_count):
+            pair = self.vm_pairs[i]
+            lam  = pair.traffic_rate
+            old_comm[2*i]   = lam * self.distance(pair.first_vm_location,  ingress_sw, True)       # ingress VM
+            old_comm[2*i+1] = lam * self.distance(egress_sw,               pair.second_vm_location, True)  # egress VM
+
+        assignment_idx = [-1] * n_v
+        remaining = set(range(n_v))
+        used_pm_idxs = set()
+
+        def best_feasible(v):
+            best_j, best_cost = None, None
+            need = d[v]
+            for j in range(n_p):
+                if need <= cap[j]:
+                    c = t[v][j]
+                    if best_cost is None or c < best_cost:
+                        best_j, best_cost = j, c
+            if best_j is None:
+                raise ValueError(f"No feasible PM for VM {v} with demand {need} under current capacities.")
+            return best_j, best_cost
+
+        # Greedy selection rounds
+        while remaining:
+            pick_v = pick_j = None
+            pick_cost = pick_util = None
+            for v in remaining:
+                j_star, c_star = best_feasible(v)
+                util = old_comm[v] - c_star
+                if (pick_util is None) or (util > pick_util):
+                    pick_v, pick_j, pick_cost, pick_util = v, j_star, c_star, util
+
+            assignment_idx[pick_v] = pick_j
+            cap[pick_j] -= d[pick_v]
+            used_pm_idxs.add(pick_j)
+            remaining.remove(pick_v)
+
+        total_cost = sum(t[v][assignment_idx[v]] for v in range(n_v))
+        assignment_pm_ids = [self.first_pm + j for j in assignment_idx]
+        used_pm_count = len(used_pm_idxs)
+
+        if apply:
+            # write the chosen plan back into vm_pairs
+            for i in range(self.vm_pair_count):
+                self.vm_pairs[i].first_vm_location  = assignment_pm_ids[2*i]
+                self.vm_pairs[i].second_vm_location = assignment_pm_ids[2*i+1]
+
+        # Return exactly what your plotting code expects
+        return total_cost, used_pm_count
 
     def create_pairs_pal_place(self):
         #placing VM pairs based on PAL algorithm
@@ -691,6 +784,11 @@ class FatTree:
         traffic_rates = np.random.randint(self.traffic_low, self.traffic_high + 1, len(self.vm_pairs))
         for i in range(len(self.vm_pairs)):
             self.vm_pairs[i].traffic_rate = traffic_rates[i]
+
+    def reset_pms(self):
+        """Reset every PM’s available capacity to full (homogeneous)."""
+        for pm in range(self.first_pm, self.last_pm + 1):
+            self.tree[pm].capacity_left = self.pm_capacity
 
     def cs2_migration(self):
         self.calculate_initial_cost()
