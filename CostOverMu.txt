@@ -1,0 +1,30 @@
+#set terminal enhanced font "Helvetica,18"
+#set terminal postscript enhanced font "Helvetica,32"
+set termoption enhanced
+set terminal postscript eps enhanced
+#set terminal postscript enhanced font eps
+set term eps
+set auto x
+set auto y
+#set yrange [0:6]
+unset yrange
+set key left top
+set key font ",36"
+set style data histogram
+set style histogram cluster gap 1
+set term eps
+set style fill pattern border -1
+#set boxwidth 0.5
+set style histogram errorbars gap 1 lw 1
+set size 1.1,1.1
+set xlabel 'Migration Coefficient' font ",38"
+set ylabel 'Total Comm. Cost (x1e5)' font ",42"
+set xtics font ",34"
+set ytics font ",42"
+set terminal postscript eps solid color lw 1 "Arial" 30
+set offset 0,0,0,0
+
+set output 'CostOverMu.eps'
+plot 'CostOverMu.dat' using 2:3 t 'ILP', \
+     '' using 4:5:xticlabels(1) t 'PLAN'
+

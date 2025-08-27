@@ -565,7 +565,7 @@ class FatTree:
         gap: float | None = None,       # relative MIP gap (e.g., 0.01 for 1%)
         threads: int | None = None,
         write_lp: bool = False,
-    keep_files: bool = False,
+        keep_files: bool = False,
     ):
         # 1) Build data
         t  = self.make_t()

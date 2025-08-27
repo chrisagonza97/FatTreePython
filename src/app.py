@@ -178,7 +178,7 @@ class App:
     def migration_compare_plot_mu():
         # Fixed experiment settings
         k = 16
-        vm_pairs = 500
+        vm_pairs = 100
         vnf_count = 3
         vnf_capacity = 3
         pm_capacity = 12
@@ -209,12 +209,12 @@ class App:
                 tree.migration_coefficient = mu
 
                 # 4) ILP (does not modify tree)
-                assign, obj_value, used_pms, status = tree.migrate_pamh_ilp()
+                assign, obj_value, used_pms, status = tree.migrate_pamh_ilp(time_limit=300)
                 ilp_cost[i, j]   = obj_value
                 ilp_active[i, j] = len(used_pms)
 
                 # 5) Greedy on the SAME baseline state (apply=False ensures no mutation)
-                _, plan_total_cost, plan_used_pm_count = tree.migrate_pamh_plan(apply=False)
+                plan_total_cost, plan_used_pm_count = tree.migrate_pamh_plan(apply=False)
                 plan_cost[i, j]   = plan_total_cost
                 plan_active[i, j] = plan_used_pm_count
 
