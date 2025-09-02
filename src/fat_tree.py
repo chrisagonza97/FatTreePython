@@ -517,6 +517,83 @@ class FatTree:
 
         return total_cost, used_pm_count
    
+   '''
+   def create_pairs_sized_pal_place(self, lower_bound, upper_bound):
+    # Build PM slots; I and E will reference the same dict objects
+    pm_slots = []
+    for j in range(self.pm_count):
+        pm_id = self.first_pm + j
+        pm_slots.append({
+            "pm_id": pm_id,
+            "i_cost": self.distance(self.vnfs[0], pm_id, True),
+            "e_cost": self.distance(self.vnfs[self.vnf_count - 1], pm_id, True),
+            "open_slots": self.pm_capacity,
+        })
+
+    # Ordered PM lists (Next-Fit over these)
+    I = sorted(pm_slots, key=lambda s: s["i_cost"])
+    E = sorted(pm_slots, key=lambda s: s["e_cost"])
+
+    # VM pairs by non-ascending traffic
+    pairs = sorted(self.vm_pairs, key=lambda p: p.traffic_rate, reverse=True)
+
+    i = j = 0
+    used_pms = set()
+
+    for k in range(self.vm_pair_count):
+        dv = getattr(pairs[k], "vm_size", 1)
+        dvp = dv  # same size for both VMs in a pair
+
+        # find feasible I[i] and E[j]
+        while i < len(I) and I[i]["open_slots"] < dv:
+            i += 1
+        while j < len(E) and E[j]["open_slots"] < dvp:
+            j += 1
+        if i >= len(I) or j >= len(E):
+            raise ValueError(f"No feasible PMs for pair {k} (size={dv}).")
+
+        # enforce different PMs — advance the side with the cheaper next option
+        # until we get I[i].pm_id != E[j].pm_id
+        guard = 0
+        while i < len(I) and j < len(E) and I[i]["pm_id"] == E[j]["pm_id"]:
+            # try to move the side whose next candidate is "better available"
+            move_I = False
+            # if E can't move or I can and looks promising, move I; else move E
+            if (j + 1 >= len(E)) or (i + 1 < len(I) and I[i + 1]["open_slots"] >= dv and I[i + 1]["i_cost"] <= E[j]["e_cost"]):
+                move_I = True
+            if move_I:
+                i += 1
+                while i < len(I) and I[i]["open_slots"] < dv:
+                    i += 1
+            else:
+                j += 1
+                while j < len(E) and E[j]["open_slots"] < dvp:
+                    j += 1
+            guard += 1
+            if guard > self.pm_count * 2:
+                raise ValueError("Could not find two distinct PMs with enough capacity.")
+
+        if i >= len(I) or j >= len(E):
+            raise ValueError(f"No feasible distinct PMs for pair {k} (size={dv}).")
+
+        # place on different PMs
+        pairs[k].first_vm_location  = I[i]["pm_id"]
+        pairs[k].second_vm_location = E[j]["pm_id"]
+        I[i]["open_slots"] -= dv
+        E[j]["open_slots"] -= dvp
+        used_pms.add(I[i]["pm_id"]); used_pms.add(E[j]["pm_id"])
+
+        # Next-Fit: advance pointer if this PM can no longer fit the next item
+        if i < len(I) and I[i]["open_slots"] < dv:
+            i += 1
+        if j < len(E) and E[j]["open_slots"] < dvp:
+            j += 1
+
+    # cost
+    total_cost = sum(self.calc_pair_cost(p) for p in pairs)
+    print(f"Total cost of configuration for sized PAL placement: {total_cost}")
+    return total_cost, len(used_pms)
+   '''
     def make_t(self):
         #t will be a 2d array
         #first dimension size is number of VMs (vm pairs *2)
