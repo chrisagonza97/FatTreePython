@@ -676,7 +676,7 @@ class FatTree:
         # --- Solver (CBC) with progress logging and portable gap control ---
         cbc_opts = []
         if log:
-            # more verbose log (2); omit if too chatty
+            # more verbose log (2)
             cbc_opts += ["-log", "2"]
         if gap is not None:
             # CBC's relative MIP gap (e.g., 0.01 for 1%)
@@ -721,7 +721,7 @@ class FatTree:
         n_v = self.vm_pair_count * 2
         n_p = self.pm_count
 
-        # PMs start empty (local capacities; we don't touch self.tree here)
+        # PMs start empty (local capacities)
         cap = rc[:]
 
         # Old communication cost per VM (pre-migration)
