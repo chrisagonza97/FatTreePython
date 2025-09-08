@@ -517,7 +517,7 @@ class FatTree:
 
         return total_cost, used_pm_count
    
-   '''
+    '''
    def create_pairs_sized_pal_place(self, lower_bound, upper_bound):
     # Build PM slots; I and E will reference the same dict objects
     pm_slots = []
@@ -593,7 +593,7 @@ class FatTree:
     total_cost = sum(self.calc_pair_cost(p) for p in pairs)
     print(f"Total cost of configuration for sized PAL placement: {total_cost}")
     return total_cost, len(used_pms)
-   '''
+        '''
     def make_t(self):
         #t will be a 2d array
         #first dimension size is number of VMs (vm pairs *2)
@@ -753,12 +753,14 @@ class FatTree:
         # Greedy selection rounds
         while remaining:
             pick_v = pick_j = None
-            pick_cost = pick_util = None
+            pick_score = None
             for v in remaining:
                 j_star, c_star = best_feasible(v)
-                util = old_comm[v] - c_star
-                if (pick_util is None) or (util > pick_util):
-                    pick_v, pick_j, pick_cost, pick_util = v, j_star, c_star, util
+                util = old_comm[v] - c_star                 # improvement
+                denom = d[v] if d[v] > 0 else 1
+                score = util / denom                        # utility per unit VM size
+                if (pick_score is None) or (score > pick_score):
+                    pick_v, pick_j, pick_score = v, j_star, score
 
             assignment_idx[pick_v] = pick_j
             cap[pick_j] -= d[pick_v]
