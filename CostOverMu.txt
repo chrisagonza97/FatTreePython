@@ -26,5 +26,5 @@ set offset 0,0,0,0
 
 set output 'CostOverMu.eps'
 plot 'CostOverMu.dat' using 2:3 t 'ILP', \
-     '' using 4:5:xticlabels(1) t 'PLAN'
+     '' using 4:5:xticlabels(1) t 'Greedy'
 

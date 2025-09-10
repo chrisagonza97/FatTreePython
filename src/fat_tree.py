@@ -860,9 +860,15 @@ class FatTree:
 
     def randomize_traffic(self):
         # Using NumPy for efficient random traffic generation
-        traffic_rates = np.random.randint(self.traffic_low, self.traffic_high + 1, len(self.vm_pairs))
-        for i in range(len(self.vm_pairs)):
-            self.vm_pairs[i].traffic_rate = traffic_rates[i]
+        for pair in self.vm_pairs:
+            prob = random.random()
+            if prob < 0.25:
+                rand_rate = random.randint(0, 299)  # light
+            elif prob < 0.95:
+                rand_rate = random.randint(300, 700)  # medium
+            else:
+                rand_rate = random.randint(701, 1000)  # heavy
+            pair.traffic_rate = rand_rate
 
     def reset_pms(self):
         """Reset every PM’s available capacity to full (homogeneous)."""
